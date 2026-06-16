@@ -7,7 +7,10 @@ Pull ollama 3.2
 ```
     ollama pull llama3.2
 ```
-Then run: ollama serve
+Then run: 
+```
+    ollama serve
+```
     This should start the port for ollama then run then the program should handle everything by itself
 2. Create a virtual environment:
 ```
