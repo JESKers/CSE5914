@@ -1,3 +1,4 @@
+import os
 import bs4
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.document_loaders import CSVLoader
@@ -25,19 +26,23 @@ docs = text_splitter.split_documents(documents)
 # Let's see how many chunks we created
 print(len(docs))
 # Let's take a look at the first document
-docs[1]
+print(docs[1])
 
 # Embedding
 from langchain_milvus import Milvus
 from langchain_ollama import OllamaEmbeddings
 
+ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2")
+rebuild_index = os.getenv("REBUILD_INDEX", "FALSE").upper() == "TRUE"
+
 embeddings = OllamaEmbeddings(
     model="nomic-embed-text",
-    base_url="http://localhost:11434",
+    base_url=ollama_base_url,
 )
 
 # Set to true when the csv changes, otherwise it doesn't re embed the csv every time
-BUILD_INDEX = input("rebuild the db? (respond in ALL CAPS): ")
+BUILD_INDEX = rebuild_index
 
 if BUILD_INDEX:
     text_splitter = RecursiveCharacterTextSplitter(
@@ -67,9 +72,10 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_ollama import ChatOllama
 
 # Initialize the OpenAI language model for response generation
-# Set temperature to 0 to make the responses more consistant
+# Set temperature to 0.2 to make the responses more consistant
 llm = ChatOllama(
-    model="llama3.2",
+    model=ollama_model,
+    base_url=ollama_base_url,
     temperature=0.2,
 )
 
@@ -97,7 +103,6 @@ prompt = PromptTemplate(
 # Convert the vector store to a retriever
 retriever = vectorstore.as_retriever()
 
-
 # Define a function to format the retrieved documents
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
@@ -113,7 +118,6 @@ rag_chain = (
 )
 
 # rag_chain.get_graph().print_ascii()
-
 
 # query="can you give me 3 of the lowest costing car with above 30mpg mileage"
 # query="can you give me 3 all terraine car, and it should have relatively modern interface"

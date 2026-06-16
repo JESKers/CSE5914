@@ -23,3 +23,6 @@ data/
 .DS_Store
 .vscode/
 .idea/
+
+# Docker
+/volumes

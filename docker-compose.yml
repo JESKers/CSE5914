@@ -1,0 +1,46 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ragllm_ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    volumes:
+      - ollama_models:/root/.ollama
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: ragllm_ollama_pull
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        sleep 5
+        ollama pull llama3.2
+        ollama pull nomic-embed-text
+    restart: "no"
+
+  ragllm:
+    build:
+      context: ./ragllm
+      dockerfile: Dockerfile
+    container_name: ragllm_app
+    working_dir: /app
+    volumes:
+      - ./ragllm:/app
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.2
+      REBUILD_INDEX: "FALSE"
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    command: python main.py
+    tty: true
+
+volumes:
+  ollama_models:
