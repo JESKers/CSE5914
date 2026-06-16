@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
+    container_name: es01
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=true
+      - ELASTIC_PASSWORD=changeme
+      - KIBANA_PASSWORD=kibana
+    ports:
+      - "9200:9200"
+    networks:
+      - elastic
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+  kib01:
+    image: docker.elastic.co/kibana/kibana:9.4.2
+    container_name: kib01
+    environment:
+      - ELASTICSEARCH_HOSTS=https://es01:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=kibana
+      - ELASTICSEARCH_SSL_VERIFICATIONMODE=none
+    ports:
+      - "5601:5601"
+    networks:
+      - elastic
+    depends_on:
+      - es01
+
+  # ---> YOUR NEW INTEGRATION LAYER <---
+  api:
+    build: .
+    container_name: fast_api_integration
+    image: python:3.10-slim
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    working_dir: /app
+    # Run the uvicorn server automatically
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      # Pass the ES credentials to your Python code
+      - ES_HOST=https://es01:9200
+      - ES_USER=elastic
+      - ES_PASSWORD=changeme
+    networks:
+      - elastic
+    depends_on:
+      - es01
+
+networks:
+  elastic:
+    driver: bridge
+
+volumes:
+  es_data:

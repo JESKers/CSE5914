@@ -1,0 +1,31 @@
+{
+  "system_instruction": "You are an AI car recommendation assistant. Analyze the user_query and recommend the best options from the retrieved_candidates.",
+  "user_query": "Find a fuel-efficient SUV",
+  "retrieved_candidates": [
+    {
+      "candidate_id": "doc_8472",
+      "core_specs": {
+        "Make": "Toyota",
+        "Model": "RAV4",
+        "Year": 2021,
+        "MSRP": 24900,
+        "Vehicle Style": "4dr SUV",
+        "Vehicle Size": "Midsize"
+      },
+      "performance": {
+        "Engine HP": 203,
+        "Engine Cylinders": 4,
+        "Transmission Type": "AUTOMATIC",
+        "Driven_Wheels": "all wheel drive"
+      },
+      "efficiency": {
+        "highway MPG": 35,
+        "city mpg": 27
+      },
+      "augmented_vpic_data": {
+        "body_class": "Sport Utility Vehicle (SUV)",
+        "seat_count": 5
+      }
+    }
+  ]
+}
