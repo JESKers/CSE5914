@@ -1,6 +1,9 @@
-"""Unit tests for the query builder — no live ES needed."""
-from app.schemas import SearchFilters
-from app.search_service import _build_query
+"""Unit tests for the query builder — no live ES needed.
+
+Run from the repo root:  pytest
+"""
+from backend.app.schemas import SearchFilters
+from search.search_service import _build_query
 
 
 def test_match_all_when_empty():

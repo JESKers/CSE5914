@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3 -m py_compile hello_llm.py build_index.py)"
+      "Bash(python3 -m py_compile hello_llm.py build_index.py)",
+      "Bash(python3 -m venv /tmp/jv2)",
+      "Bash(/tmp/jv2/bin/pip install *)",
+      "Bash(/tmp/jv2/bin/python -c \"import backend.app.main; print\\('backend.app.main imports OK'\\)\")",
+      "Bash(/tmp/jv2/bin/python -m pytest -q search/tests/)",
+      "Bash(/tmp/jv2/bin/python -c \"import rag.parser, search.ingest, search.clean_data; print\\('rag.parser + search modules import OK'\\)\")",
+      "Bash(rm -rf /tmp/jv2)",
+      "Bash(python3 -c \"import json; json.load\\(open\\('public/mock_response.json'\\)\\); json.load\\(open\\('package.json'\\)\\); print\\('JSON valid: mock_response.json + package.json'\\)\")",
+      "Bash(command -v node)",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

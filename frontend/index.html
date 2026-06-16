@@ -1,40 +1,12 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>JESKers Car Search</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <!--
-    PLACEHOLDER frontend (Owner: Shangrui).
-    Replace with React/Vite if desired — just keep hitting the same API.
-    API base is configured in app.js (API_BASE).
-  -->
-  <header><h1>🚗 JESKers Car Search</h1></header>
-
-  <form id="search-form">
-    <input type="text" name="q" placeholder="Keywords (e.g. luxury coupe)" />
-    <select name="make" id="make"><option value="">Any make</option></select>
-    <input type="number" name="year_min" placeholder="Year min" />
-    <input type="number" name="year_max" placeholder="Year max" />
-    <input type="number" name="price_min" placeholder="Price min" />
-    <input type="number" name="price_max" placeholder="Price max" />
-    <input type="number" name="hp_min" placeholder="HP min" />
-    <select name="transmission_type" id="transmission"><option value="">Any transmission</option></select>
-    <select name="sort">
-      <option value="popularity">Popularity</option>
-      <option value="price">Price</option>
-      <option value="year">Year</option>
-      <option value="hp">Horsepower</option>
-    </select>
-    <button type="submit">Search</button>
-  </form>
-
-  <p id="status"></p>
-  <div id="results"></div>
-
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JESKers Car Search</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

@@ -24,21 +24,19 @@ services:
         condition: service_healthy
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     env_file: .env
     environment:
       - ES_HOST=http://elasticsearch:9200
+    volumes:
+      - ./data:/app/data        # drop data.csv / cars_clean.json here without rebuilding
     ports:
       - "8000:8000"
     depends_on:
       elasticsearch:
         condition: service_healthy
 
-  frontend:
-    image: nginx:alpine
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
-    ports:
-      - "8080:80"
-    depends_on:
-      - backend
+  # Frontend (Vite + React) runs locally in dev — see frontend/README.md:
+  #   cd frontend && npm install && npm run dev   ->   http://localhost:5173

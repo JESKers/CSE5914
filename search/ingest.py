@@ -2,19 +2,19 @@
 
 Owner: Kangjie.
 
-Pipeline:  data.csv --(app.clean_data)--> cars_clean.json --(this)--> ES `cars`
+Pipeline:  data/data.csv --(search.clean_data)--> data/cars_clean.json --(this)--> ES `cars`
 
-Usage (run from backend/):
-    python -m app.clean_data       # produce data/cars_clean.json first
-    python -m app.ingest           # then index it
+Usage (run from the repo root):
+    python -m search.clean_data    # produce data/cars_clean.json first
+    python -m search.ingest        # then index it
 """
 import json
 from pathlib import Path
 
 from elasticsearch import helpers
 
-from .config import settings
-from .es_client import get_es
+from backend.app.config import settings
+from backend.app.es_client import get_es
 from .index_mapping import CARS_MAPPING
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "cars_clean.json"
@@ -30,9 +30,7 @@ def _rows(path: Path):
 
 def main():
     if not DATA_PATH.exists():
-        raise SystemExit(
-            f"Missing {DATA_PATH}. Run `python -m app.clean_data` first."
-        )
+        raise SystemExit(f"Missing {DATA_PATH}. Run `python -m search.clean_data` first.")
 
     es = get_es()
     if es.indices.exists(index=settings.es_index):

@@ -1,17 +1,14 @@
-"""Search core — translate SearchFilters into Elasticsearch queries.
+"""Search core — translate filters into Elasticsearch queries.
 
-Owner: Kangjie. This module is the single source of truth for how filters
-become ES query DSL. Refine scoring, add fuzziness, facets, etc. here.
+Owner: Kangjie. Single source of truth for how filters become ES query DSL.
+Returns plain dicts so this package stays independent of the backend's API
+schemas — the backend maps these into its response models.
+
+`filters` is any object exposing the SearchFilters attributes (the backend
+passes a pydantic SearchFilters; tests pass the same).
 """
-from .config import settings
-from .es_client import get_es
-from .schemas import (
-    CarResult,
-    FacetBucket,
-    FacetsResponse,
-    SearchFilters,
-    SearchResponse,
-)
+from backend.app.config import settings
+from backend.app.es_client import get_es
 
 SORT_FIELDS = {
     "price": "msrp",
@@ -20,8 +17,14 @@ SORT_FIELDS = {
     "popularity": "popularity",
 }
 
+# fields returned for each car hit
+RESULT_FIELDS = [
+    "make", "model", "year", "msrp", "engine_hp", "engine_fuel_type",
+    "transmission_type", "vehicle_style", "highway_mpg", "city_mpg",
+]
 
-def _build_query(f: SearchFilters) -> dict:
+
+def _build_query(f) -> dict:
     must: list[dict] = []
     filt: list[dict] = []
 
@@ -59,7 +62,8 @@ def _build_query(f: SearchFilters) -> dict:
     return {"bool": {"must": must or {"match_all": {}}, "filter": filt}}
 
 
-def search(f: SearchFilters) -> SearchResponse:
+def search(f) -> dict:
+    """Run a structured/keyword search. Returns {total, page, size, results}."""
     es = get_es()
     sort_field = SORT_FIELDS.get(f.sort, "popularity")
     body = {
@@ -71,22 +75,13 @@ def search(f: SearchFilters) -> SearchResponse:
     resp = es.search(index=settings.es_index, body=body)
     hits = resp["hits"]
     results = [
-        CarResult(id=h["_id"], **{
-            k: h["_source"].get(k)
-            for k in CarResult.model_fields
-            if k != "id"
-        })
+        {"id": h["_id"], **{k: h["_source"].get(k) for k in RESULT_FIELDS}}
         for h in hits["hits"]
     ]
-    return SearchResponse(
-        total=hits["total"]["value"],
-        page=f.page,
-        size=f.size,
-        results=results,
-    )
+    return {"total": hits["total"]["value"], "page": f.page, "size": f.size, "results": results}
 
 
-def facets() -> FacetsResponse:
+def facets() -> dict:
     """Aggregations to drive the frontend dropdowns."""
     es = get_es()
     body = {
@@ -101,10 +96,10 @@ def facets() -> FacetsResponse:
     aggs = resp["aggregations"]
 
     def buckets(name):
-        return [FacetBucket(key=b["key"], count=b["doc_count"]) for b in aggs[name]["buckets"]]
+        return [{"key": b["key"], "count": b["doc_count"]} for b in aggs[name]["buckets"]]
 
-    return FacetsResponse(
-        makes=buckets("makes"),
-        transmissions=buckets("transmissions"),
-        fuel_types=buckets("fuel_types"),
-    )
+    return {
+        "makes": buckets("makes"),
+        "transmissions": buckets("transmissions"),
+        "fuel_types": buckets("fuel_types"),
+    }

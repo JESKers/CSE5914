@@ -1,0 +1,5 @@
+# Elasticsearch search core + data prep (Owner: Kangjie)
+elasticsearch>=8.13.0
+pandas>=2.2.0
+# notebook profiling
+jupyter>=1.0.0

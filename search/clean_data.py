@@ -3,18 +3,16 @@
 Owner: Kangjie (Elasticsearch).
 
 Pipeline:
-  1. normalize column names -> snake_case (matches app.schemas / index_mapping)
+  1. normalize column names -> snake_case (matches backend.app.schemas / index_mapping)
   2. cast Year / Engine HP / MSRP (+ MPG, cylinders) to numeric
   3. impute nulls in Engine HP and MPG (median by Make, global fallback)
   4. drop duplicate rows
   5. build a combined `text` field for the keyword search box
-  6. write cars_clean.json as NDJSON (one car per line)
+  6. write data/cars_clean.json as NDJSON (one car per line)
 
-Usage (run from backend/):
-    python -m app.clean_data
-    python -m app.clean_data --input data/data.csv --output data/cars_clean.json
-
-The output feeds the bulk loader (see app.ingest).
+Usage (run from the repo root):
+    python -m search.clean_data
+    python -m search.clean_data --input data/data.csv --output data/cars_clean.json
 """
 import argparse
 import json
@@ -102,11 +100,7 @@ def to_ndjson(df: pd.DataFrame, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as fh:
         for record in df.to_dict(orient="records"):
-            # drop nulls so ES docs stay clean
-            doc = {
-                k: (None if pd.isna(v) else v)
-                for k, v in record.items()
-            }
+            doc = {k: (None if pd.isna(v) else v) for k, v in record.items()}
             doc = {k: v for k, v in doc.items() if v is not None}
             fh.write(json.dumps(doc) + "\n")
     print(f"Wrote {len(df)} cars -> {output_path}")

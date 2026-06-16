@@ -1,20 +1,29 @@
-"""FastAPI entrypoint — wires the API contract to the search core.
+"""FastAPI entrypoint — wires the API contract to the search core + RAG parser.
 
-Owner: Eric (Integration).
+Owner: Eric (Integration). Run from the repo root:
+    uvicorn backend.app.main:app --reload
+
+Endpoints (see docs/API_CONTRACT.md):
+    GET  /health
+    GET  /search     structured filters + keyword
+    GET  /facets     dropdown buckets
+    POST /recommend  free-text natural-language query (RAG spike)
 """
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from search import search_service
+
 from .config import settings
 from .es_client import get_es
 from .schemas import (
+    CarResult,
     FacetsResponse,
-    NLSearchRequest,
-    NLSearchResponse,
+    RecommendRequest,
+    RecommendResponse,
     SearchFilters,
     SearchResponse,
 )
-from . import search_service
 
 app = FastAPI(title="JESKers Car Search", version="0.1.0")
 
@@ -24,6 +33,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _to_results(rows: list[dict]) -> list[CarResult]:
+    return [CarResult(**row) for row in rows]
 
 
 @app.get("/health")
@@ -59,19 +72,32 @@ def search(
         engine_fuel_type=engine_fuel_type, transmission_type=transmission_type,
         q=q, sort=sort, order=order, page=page, size=size,
     )
-    return search_service.search(filters)
+    res = search_service.search(filters)
+    return SearchResponse(
+        results=_to_results(res["results"]),
+        total=res["total"],
+        page=res["page"],
+        size=res["size"],
+        query_echo=filters.model_dump(exclude_none=True),
+    )
 
 
 @app.get("/facets", response_model=FacetsResponse)
 def facets():
-    return search_service.facets()
+    return FacetsResponse(**search_service.facets())
 
 
-@app.post("/nl-search", response_model=NLSearchResponse)
-def nl_search(req: NLSearchRequest):
-    """Experimental — Jerry's NL spike (Timebox 3 prep)."""
+@app.post("/recommend", response_model=RecommendResponse)
+def recommend(req: RecommendRequest):
+    """Free-text natural-language recommendation (RAG/LLM spike, Timebox 3 prep)."""
     if not settings.anthropic_api_key:
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
-    from .nl_search import nl_search as run_nl_search
+    from rag.parser import parse_query  # lazy import: only /recommend needs anthropic
 
-    return run_nl_search(req.query)
+    filters = parse_query(req.query)
+    res = search_service.search(filters)
+    return RecommendResponse(
+        results=_to_results(res["results"]),
+        total=res["total"],
+        query_echo={"query": req.query, "parsed_filters": filters.model_dump(exclude_none=True)},
+    )

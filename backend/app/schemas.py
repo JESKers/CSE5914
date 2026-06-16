@@ -1,10 +1,10 @@
 """API contract — request filters and response models.
 
-Owned by Eric (Integration). This is the shared schema all roles code against:
-- Kangjie's search_service maps SearchFilters -> ES query and returns SearchResponse.
-- Jerry's nl_search produces SearchFilters from natural language.
-- Shangrui's frontend sends these query params and renders CarResult.
-Freeze this on Day 1; changes here ripple to everyone.
+Owned by Eric (Integration). The shared schema all roles code against:
+- search.search_service maps SearchFilters -> ES query, returns dicts.
+- rag.parser produces SearchFilters from natural language.
+- the frontend sends these query params and renders CarResult.
+See docs/API_CONTRACT.md. Freeze this on Day 1.
 """
 from typing import Optional
 
@@ -46,10 +46,12 @@ class CarResult(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    total: int
-    page: int
-    size: int
+    """Shared response envelope: { results, total, query_echo }."""
     results: list[CarResult]
+    total: int
+    query_echo: dict = Field(default_factory=dict, description="echo of the filters/query applied")
+    page: int = 1
+    size: int = 20
 
 
 class FacetBucket(BaseModel):
@@ -63,10 +65,12 @@ class FacetsResponse(BaseModel):
     fuel_types: list[FacetBucket] = []
 
 
-class NLSearchRequest(BaseModel):
-    query: str
+class RecommendRequest(BaseModel):
+    query: str = Field(description="free-text request, e.g. 'fast sports car under $50,000'")
 
 
-class NLSearchResponse(BaseModel):
-    parsed_filters: SearchFilters
+class RecommendResponse(BaseModel):
+    """Same envelope as /search; query_echo carries the parsed filters."""
     results: list[CarResult]
+    total: int
+    query_echo: dict

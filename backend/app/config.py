@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # LLM (Jerry's NL spike / Timebox 3)
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-haiku-4-5-20251001"
+    anthropic_model: str = "claude-opus-4-8"
 
     # API
     cors_origins: str = "*"

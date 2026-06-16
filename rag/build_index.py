@@ -22,7 +22,7 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 
 ROOT = Path(__file__).resolve().parent.parent
-NDJSON = ROOT / "backend" / "data" / "cars_clean.json"
+NDJSON = ROOT / "data" / "cars_clean.json"
 INDEX_DIR = Path(__file__).resolve().parent / "faiss_index"
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -46,7 +46,7 @@ def _doc_text(car: dict) -> str:
 def load_cars():
     if not NDJSON.exists():
         raise SystemExit(
-            f"Missing {NDJSON}. Run `python -m app.clean_data` in backend/ first."
+            f"Missing {NDJSON}. Run `python -m search.clean_data` from the repo root first."
         )
     with NDJSON.open() as fh:
         return [json.loads(line) for line in fh if line.strip()]

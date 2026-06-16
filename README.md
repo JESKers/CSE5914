@@ -1,53 +1,81 @@
 # CSE5914 — JESKers Car Search
 
-Smart car search & recommendation system. **Timebox 2** delivers an Elasticsearch-backed
-**Car Search System** over the [Kaggle car dataset](https://www.kaggle.com/datasets/CooperUnion/cardataset).
+Smart car search & recommendation over the
+[Kaggle car dataset](https://www.kaggle.com/datasets/CooperUnion/cardataset).
 
-See [docs/TIMEBOX2_PLAN.md](docs/TIMEBOX2_PLAN.md) for the full plan and role assignments.
+- **Timebox 2** — Elasticsearch-backed **Car Search System** (filter by brand, model,
+  year, price, horsepower, engine, transmission + keywords). ← current
+- **Timebox 3** — **Smart Recommendation** via RAG/LLM over free-text queries.
 
-## Architecture
+Plan: [docs/TIMEBOX2_PLAN.md](docs/TIMEBOX2_PLAN.md) · API: [docs/API_CONTRACT.md](docs/API_CONTRACT.md)
+
+## Repo structure
 
 ```
-frontend (static / nginx)  →  backend (FastAPI)  →  Elasticsearch
-                                     └→ /nl-search → LLM parser (Timebox 3 spike)
+/frontend   React + Vite UI (Shangrui)
+/backend    FastAPI service — wires the API contract together (Eric)
+/search     Elasticsearch index, ingestion, query core (Kangjie)
+/rag        LLM hello-world, vector store, NL query parser (Jerry)
+/data       Kaggle data.csv + generated cars_clean.json (git-ignored)
+/docs       plan + API contract
 ```
 
-| Area | Owner | Code |
-|------|-------|------|
-| Elasticsearch + query core | Kangjie | `backend/app/{ingest,search_service,index_mapping}.py` |
-| NL→filter LLM spike | Jerry | `backend/app/nl_search.py` |
+The backend imports the `search` and `rag` packages, so Python commands run
+from the **repo root** (`uvicorn backend.app.main:app`, `python -m search.ingest`).
+
+| Area | Owner | Entry points |
+|------|-------|--------------|
+| Elasticsearch + query core | Kangjie | `search/{clean_data,ingest,search_service,index_mapping}.py` |
+| RAG / NL parser | Jerry | `rag/{hello_llm,build_index,parser}.py`, `rag/test_queries.md` |
 | Frontend | Shangrui | `frontend/` |
-| Integration / API / ops | Eric | `backend/app/main.py`, `docker-compose.yml` |
+| Integration / API / ops | Eric | `backend/app/main.py`, `docker-compose.yml`, `docs/API_CONTRACT.md` |
 
-## Quick start (Docker)
+## Quick start
 
 ```bash
-cp .env.example .env                       # fill ANTHROPIC_API_KEY if testing /nl-search
-docker compose up -d                       # starts ES + backend + frontend
+cp .env.example .env                       # fill ANTHROPIC_API_KEY to test /recommend
+docker compose up -d                       # Elasticsearch + Kibana + backend
 
-# one-time: download data.csv from Kaggle into backend/data/, then clean + seed ES:
-docker compose exec backend python -m app.clean_data   # data.csv -> cars_clean.json
-docker compose exec backend python -m app.ingest       # cars_clean.json -> ES
+# download data.csv from Kaggle into data/, then clean + seed ES (from repo root):
+docker compose exec backend python -m search.clean_data   # data.csv -> cars_clean.json
+docker compose exec backend python -m search.ingest       # cars_clean.json -> ES
 ```
 
-- Frontend: http://localhost:8080
-- Kibana:   http://localhost:5601
-- API docs: http://localhost:8000/docs
-- Health:   http://localhost:8000/health
+- Backend API docs: http://localhost:8000/docs · Health: http://localhost:8000/health
+- Kibana: http://localhost:5601
 
-## Local dev (backend only)
+Frontend (runs locally in dev):
 
 ```bash
-cd backend
+cd frontend && npm install && npm run dev    # http://localhost:5173
+```
+
+## Local dev — backend only
+
+```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-# point at a local ES; defaults to http://localhost:9200
-uvicorn app.main:app --reload
-pytest                                      # query-builder unit tests (no ES needed)
+pip install -r backend/requirements.txt
+uvicorn backend.app.main:app --reload        # run from the repo root
+pytest                                        # query-builder unit tests (no ES needed)
 ```
 
-## API
+Owner-specific extras: `pip install -r search/requirements.txt` (Jupyter profiling),
+`pip install -r rag/requirements.txt` (embeddings / FAISS).
 
-- `GET /search` — structured filters + `q` keyword search, sorting, paging
+## Branch strategy
+
+- `main` — always runnable; protected. No direct pushes.
+- Feature branches off `main`, one per task area:
+  `search/<topic>`, `rag/<topic>`, `frontend/<topic>`, `backend/<topic>`
+  (e.g. `search/index-mapping`, `frontend/results-grid`).
+- Open a PR into `main`; at least one teammate reviews; squash-merge.
+- Keep the API contract (`docs/API_CONTRACT.md` + `backend/app/schemas.py`) changes
+  in their own PR so everyone sees the ripple.
+
+## API summary
+
+- `GET /search` — structured filters + `q` keyword search, sort, paging
 - `GET /facets` — make / transmission / fuel-type buckets for dropdowns
-- `POST /nl-search` — experimental natural-language search (Timebox 3 prep)
+- `POST /recommend` — free-text natural-language query (RAG, Timebox 3)
+
+Full details: [docs/API_CONTRACT.md](docs/API_CONTRACT.md).
