@@ -25,11 +25,13 @@ frontend (static / nginx)  →  backend (FastAPI)  →  Elasticsearch
 cp .env.example .env                       # fill ANTHROPIC_API_KEY if testing /nl-search
 docker compose up -d                       # starts ES + backend + frontend
 
-# one-time: download data.csv from Kaggle into backend/data/, then seed ES:
-docker compose exec backend python -m app.ingest
+# one-time: download data.csv from Kaggle into backend/data/, then clean + seed ES:
+docker compose exec backend python -m app.clean_data   # data.csv -> cars_clean.json
+docker compose exec backend python -m app.ingest       # cars_clean.json -> ES
 ```
 
 - Frontend: http://localhost:8080
+- Kibana:   http://localhost:5601
 - API docs: http://localhost:8000/docs
 - Health:   http://localhost:8000/health
 
