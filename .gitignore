@@ -11,5 +11,8 @@ venv/
 # Data (download separately from Kaggle)
 backend/data/*.csv
 
+# RAG vector store (rebuild with rag/build_index.py)
+rag/faiss_index/
+
 # OS / editor
 .DS_Store
