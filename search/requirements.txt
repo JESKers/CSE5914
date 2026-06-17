@@ -1,5 +1,7 @@
 # Elasticsearch search core + data prep (Owner: Kangjie)
-elasticsearch>=8.13.0
+# Pin to 8.x to match the ES 8.13 server (a 9.x client's compatible-with=9
+# header is rejected by the 8.x server with HTTP 400).
+elasticsearch>=8.13.0,<9.0.0
 pandas>=2.2.0
 # notebook profiling
 jupyter>=1.0.0

@@ -25,7 +25,10 @@ def _rows(path: Path):
         for i, line in enumerate(fh):
             line = line.strip()
             if line:
-                yield {"_index": settings.es_index, "_id": str(i), "_source": json.loads(line)}
+                # store the row index as a real `id` field too, so the query layer
+                # can sort on it (the metadata _id field isn't sortable in ES 8.x).
+                yield {"_index": settings.es_index, "_id": str(i),
+                       "_source": {**json.loads(line), "id": i}}
 
 
 def main():

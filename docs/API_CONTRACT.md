@@ -107,3 +107,33 @@ the parsed filters:
 
 Returns `503` if `ANTHROPIC_API_KEY` is not configured. Experimental in Timebox 2;
 the primary recommendation deliverable in Timebox 3.
+
+---
+
+## Example requests (curl)
+
+Assumes the backend is up (`uvicorn backend.app.main:app` or `docker compose up`)
+and the `cars` index is seeded.
+
+```bash
+# Health + ES connectivity
+curl -s http://localhost:8000/health
+
+# Keyword search (synonym-aware: "chevy" also matches Chevrolet)
+curl -s "http://localhost:8000/search?q=chevy&size=5"
+
+# Structured filters: BMWs under $50k, sorted by horsepower
+curl -s "http://localhost:8000/search?make=BMW&price_max=50000&sort=hp&order=desc"
+
+# Combined filters + keyword + paging
+curl -s "http://localhost:8000/search?year_min=2014&year_max=2017&hp_min=300&q=coupe&page=2&size=10"
+
+# Dropdown values for the filter UI
+curl -s http://localhost:8000/facets
+
+# Validation: inverted range -> 400
+curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8000/search?price_min=50000&price_max=10000"
+
+# No matches -> 200 with an empty results array
+curl -s "http://localhost:8000/search?make=Nonesuch"
+```

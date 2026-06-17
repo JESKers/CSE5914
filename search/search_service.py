@@ -62,15 +62,22 @@ def _build_query(f) -> dict:
     return {"bool": {"must": must or {"match_all": {}}, "filter": filt}}
 
 
+def _build_sort(f) -> list[dict]:
+    """ES sort clause. Unknown sort keys fall back to popularity; the trailing
+    `_id` tie-breaker keeps pagination deterministic when the primary field ties."""
+    sort_field = SORT_FIELDS.get(f.sort, "popularity")
+    order = "asc" if f.order == "asc" else "desc"
+    return [{sort_field: {"order": order}}, {"id": "asc"}]
+
+
 def search(f) -> dict:
     """Run a structured/keyword search. Returns {total, page, size, results}."""
     es = get_es()
-    sort_field = SORT_FIELDS.get(f.sort, "popularity")
     body = {
         "query": _build_query(f),
         "from": (max(f.page, 1) - 1) * f.size,
         "size": f.size,
-        "sort": [{sort_field: {"order": "asc" if f.order == "asc" else "desc"}}],
+        "sort": _build_sort(f),
     }
     resp = es.search(index=settings.es_index, body=body)
     hits = resp["hits"]

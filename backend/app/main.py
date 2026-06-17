@@ -39,6 +39,17 @@ def _to_results(rows: list[dict]) -> list[CarResult]:
     return [CarResult(**row) for row in rows]
 
 
+def _validate_ranges(f: SearchFilters) -> None:
+    """Reject inverted min/max ranges with a 400 (per the API contract)."""
+    for lo, hi, name in (
+        (f.year_min, f.year_max, "year"),
+        (f.price_min, f.price_max, "price"),
+        (f.hp_min, f.hp_max, "hp"),
+    ):
+        if lo is not None and hi is not None and lo > hi:
+            raise HTTPException(400, f"{name}_min ({lo}) must not exceed {name}_max ({hi})")
+
+
 @app.get("/health")
 def health():
     try:
@@ -72,6 +83,7 @@ def search(
         engine_fuel_type=engine_fuel_type, transmission_type=transmission_type,
         q=q, sort=sort, order=order, page=page, size=size,
     )
+    _validate_ranges(filters)
     res = search_service.search(filters)
     return SearchResponse(
         results=_to_results(res["results"]),
