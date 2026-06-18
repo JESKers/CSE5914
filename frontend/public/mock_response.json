@@ -1,0 +1,89 @@
+{
+  "results": [
+    {
+      "id": "1",
+      "make": "BMW",
+      "model": "M4",
+      "year": 2016,
+      "msrp": 65700,
+      "engine_hp": 425,
+      "engine_fuel_type": "premium unleaded (required)",
+      "transmission_type": "MANUAL",
+      "vehicle_style": "Coupe",
+      "highway_mpg": 26,
+      "city_mpg": 17
+    },
+    {
+      "id": "2",
+      "make": "Toyota",
+      "model": "RAV4",
+      "year": 2017,
+      "msrp": 24910,
+      "engine_hp": 176,
+      "engine_fuel_type": "regular unleaded",
+      "transmission_type": "AUTOMATIC",
+      "vehicle_style": "4dr SUV",
+      "highway_mpg": 30,
+      "city_mpg": 23
+    },
+    {
+      "id": "3",
+      "make": "Ford",
+      "model": "Mustang",
+      "year": 2015,
+      "msrp": 32300,
+      "engine_hp": 435,
+      "engine_fuel_type": "premium unleaded (recommended)",
+      "transmission_type": "MANUAL",
+      "vehicle_style": "Coupe",
+      "highway_mpg": 25,
+      "city_mpg": 16
+    },
+    {
+      "id": "4",
+      "make": "Honda",
+      "model": "Civic",
+      "year": 2017,
+      "msrp": 20875,
+      "engine_hp": 158,
+      "engine_fuel_type": "regular unleaded",
+      "transmission_type": "AUTOMATIC",
+      "vehicle_style": "Sedan",
+      "highway_mpg": 42,
+      "city_mpg": 31
+    },
+    {
+      "id": "5",
+      "make": "Audi",
+      "model": "A4",
+      "year": 2016,
+      "msrp": 38500,
+      "engine_hp": 252,
+      "engine_fuel_type": "premium unleaded (required)",
+      "transmission_type": "AUTOMATIC",
+      "vehicle_style": "Sedan",
+      "highway_mpg": 31,
+      "city_mpg": 24
+    },
+    {
+      "id": "6",
+      "make": "Chevrolet",
+      "model": "Corvette",
+      "year": 2017,
+      "msrp": 55495,
+      "engine_hp": 455,
+      "engine_fuel_type": "premium unleaded (required)",
+      "transmission_type": "MANUAL",
+      "vehicle_style": "Convertible",
+      "highway_mpg": 25,
+      "city_mpg": 15
+    }
+  ],
+  "total": 6,
+  "query_echo": {
+    "q": "sample query",
+    "price_max": 70000,
+    "sort": "popularity",
+    "order": "desc"
+  }
+}

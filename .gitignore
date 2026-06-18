@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Env / secrets
+.env
+
+# Data — downloaded from Kaggle / generated locally; never commit (too large
+# for GitHub's 100MB limit and fully reproducible via search.clean_data).
+# Keep the folder via .gitkeep but ignore everything else in it.
+/data/*
+!/data/.gitkeep
+
+# RAG vector store (rebuild with rag/build_index.py)
+rag/faiss_index/
+
+# OS / editor
+.DS_Store
