@@ -42,7 +42,7 @@ embeddings = OllamaEmbeddings(
 )
 
 # Set to true when the csv changes, otherwise it doesn't re embed the csv every time
-BUILD_INDEX = rebuild_index
+BUILD_INDEX = False
 
 if BUILD_INDEX:
     text_splitter = RecursiveCharacterTextSplitter(
@@ -123,12 +123,12 @@ rag_chain = (
 # query="can you give me 3 all terraine car, and it should have relatively modern interface"
 query="What's the different flavors of skittles"
 
-retrieved_docs = retriever.invoke(query)
+# retrieved_docs = retriever.invoke(query)
 
-print("Retrieved Docs\n")
-for i, doc in enumerate(retrieved_docs):
-    print(f"\n--- DOC {i + 1} ---")
-    print(doc.page_content)
+# print("Retrieved Docs\n")
+# for i, doc in enumerate(retrieved_docs):
+#     print(f"\n--- DOC {i + 1} ---")
+#     print(doc.page_content)
 
 # Invoke the RAG chain with a specific question and retrieve the response
 res = rag_chain.invoke(query)
