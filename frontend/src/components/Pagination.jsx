@@ -1,20 +1,60 @@
-import { Button } from "@/components/ui/button";
+// Numbered pager with prev/next, bound to the API's page/size params.
+// Collapses long ranges with "…" gaps around the current page.
+function pageList(current, count) {
+  if (count <= 7) return Array.from({ length: count }, (_, i) => i + 1);
+  const pages = new Set([1, count, current, current - 1, current + 1]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= count).sort((a, b) => a - b);
+  const out = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) out.push("…");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
 
-// Prev/Next pagination bound to the API's page/size params.
 export default function Pagination({ page, size, total, onPage }) {
-  const totalPages = Math.max(1, Math.ceil((total ?? 0) / size));
-  if (total === 0) return null;
+  const count = Math.max(1, Math.ceil((total ?? 0) / size));
+  if (count <= 1) return null;
+  const pages = pageList(page, count);
+
   return (
-    <div className="flex items-center justify-center gap-3 pt-4">
-      <Button variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+    <div className="pager">
+      <button
+        className="pager__nav"
+        type="button"
+        disabled={page === 1}
+        onClick={() => onPage(page - 1)}
+      >
         ← Prev
-      </Button>
-      <span className="text-sm text-slate-500">
-        Page {page} of {totalPages}
-      </span>
-      <Button variant="outline" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
+      </button>
+      <div className="pager__pages">
+        {pages.map((p, i) =>
+          p === "…" ? (
+            <span className="pager__gap" key={`gap-${i}`}>
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              className={`pager__page ${p === page ? "pager__page--on" : ""}`}
+              onClick={() => onPage(p)}
+            >
+              {p}
+            </button>
+          )
+        )}
+      </div>
+      <button
+        className="pager__nav"
+        type="button"
+        disabled={page === count}
+        onClick={() => onPage(page + 1)}
+      >
         Next →
-      </Button>
+      </button>
     </div>
   );
 }

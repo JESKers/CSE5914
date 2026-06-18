@@ -95,7 +95,28 @@ def test_facets(monkeypatch):
         "makes": [{"key": "Chevrolet", "count": 1123}],
         "transmissions": [{"key": "AUTOMATIC", "count": 8266}],
         "fuel_types": [{"key": "regular unleaded", "count": 7172}],
+        "years": [2017, 2016, 2015],
     })
     body = client.get("/facets").json()
     assert body["makes"][0] == {"key": "Chevrolet", "count": 1123}
     assert body["transmissions"][0]["key"] == "AUTOMATIC"
+    assert body["years"] == [2017, 2016, 2015]
+
+
+def test_models_for_make(monkeypatch):
+    captured = {}
+
+    def _fake(make):
+        captured["make"] = make
+        return ["1 Series", "3 Series", "M4"]
+
+    monkeypatch.setattr(main.search_service, "models", _fake)
+    body = client.get("/models?make=BMW").json()
+    assert body == {"make": "BMW", "models": ["1 Series", "3 Series", "M4"]}
+    assert captured["make"] == "BMW"
+
+
+def test_models_requires_make():
+    # `make` is required -> 422 when omitted or blank.
+    assert client.get("/models").status_code == 422
+    assert client.get("/models?make=").status_code == 422

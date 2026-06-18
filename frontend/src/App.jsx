@@ -1,45 +1,57 @@
-import { Link, NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import SearchPage from "@/pages/SearchPage";
 import RecommendPage from "@/pages/RecommendPage";
 
-function NavTab({ to, children }) {
+function Nav() {
   return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        cn(
-          "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-          isActive ? "bg-white text-slate-900 shadow-sm" : "text-slate-300 hover:text-white"
-        )
-      }
-    >
-      {children}
-    </NavLink>
+    <header className="nav">
+      <div className="shell nav__inner">
+        <NavLink to="/" className="nav__brand" aria-label="JESKers home">
+          <span className="nav__mark" aria-hidden="true">
+            <span className="nav__needle" />
+          </span>
+          <span className="nav__name">
+            JESKers<span className="nav__dot">.</span>
+          </span>
+        </NavLink>
+        <nav className="nav__links">
+          <NavLink to="/" end className={({ isActive }) => cn(isActive && "is-active")}>
+            Search
+          </NavLink>
+          <NavLink to="/recommend" className={({ isActive }) => cn(isActive && "is-active")}>
+            Recommend
+          </NavLink>
+          <a href="#roadmap">Roadmap</a>
+        </nav>
+        <span className="nav__badge mono">Smart Car Search</span>
+      </div>
+    </header>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="footer">
+      <div className="shell footer__inner">
+        <span className="footer__names">Jerry · Eric · Shangrui · Kangjie</span>
+        <span className="footer__tag mono">JESKers · Smart Car Recommendation System</span>
+      </div>
+    </footer>
   );
 }
 
 export default function App() {
   return (
-    <div className="min-h-screen">
-      <header className="bg-slate-900 text-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <Link to="/" className="text-lg font-semibold">
-            🚗 JESKers Car Search
-          </Link>
-          <nav className="flex gap-1 rounded-lg bg-slate-800 p-1">
-            <NavTab to="/">Search</NavTab>
-            <NavTab to="/recommend">Recommend</NavTab>
-          </nav>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-6 py-6">
+    <>
+      <Nav />
+      <main>
         <Routes>
           <Route path="/" element={<SearchPage />} />
           <Route path="/recommend" element={<RecommendPage />} />
         </Routes>
       </main>
-    </div>
+      <Footer />
+    </>
   );
 }

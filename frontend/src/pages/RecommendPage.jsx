@@ -14,9 +14,17 @@ export default function RecommendPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="shell reco">
       <RecommendBox onSubmit={handleSubmit} parsedFilters={data?.query_echo} />
-      {data && <ResultsGrid results={data.results} total={data.total} />}
+      {data && (
+        <div style={{ marginTop: 32 }}>
+          <ResultsGrid
+            results={data.results}
+            total={data.total}
+            size={data.total || data.results.length}
+          />
+        </div>
+      )}
     </div>
   );
 }

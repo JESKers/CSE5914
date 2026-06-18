@@ -71,3 +71,14 @@ def test_facets_have_buckets():
     body = client.get("/facets").json()
     assert len(body["makes"]) > 0
     assert all("key" in b and "count" in b for b in body["makes"])
+    # years list is present, descending, and within the dataset range
+    years = body["years"]
+    assert len(years) > 0 and years == sorted(years, reverse=True)
+
+
+def test_models_for_make_are_scoped():
+    body = client.get("/models?make=BMW").json()
+    assert body["make"] == "BMW"
+    assert len(body["models"]) > 0
+    # every model returned should actually exist as a BMW in the index
+    assert "3 Series" in body["models"]

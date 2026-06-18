@@ -78,8 +78,23 @@ Aggregation buckets for the filter UI.
 {
   "makes":         [ { "key": "Chevrolet", "count": 1123 }, ... ],
   "transmissions": [ { "key": "AUTOMATIC", "count": 8266 }, ... ],
-  "fuel_types":    [ { "key": "regular unleaded", "count": 7172 }, ... ]
+  "fuel_types":    [ { "key": "regular unleaded", "count": 7172 }, ... ],
+  "years":         [ 2017, 2016, 2015, ... ]
 }
+```
+
+`years` is the distinct list of years in the data (newest first) — it populates
+the year-range dropdowns in the filter UI.
+
+## `GET /models?make=` — models for a make (dependent dropdown)
+
+Distinct model names for one make, alphabetically sorted. Drives the Model
+dropdown, which is enabled once a make is chosen. `make` is required (`422` if
+missing).
+
+```
+GET /models?make=BMW
+→ { "make": "BMW", "models": ["1 Series", "2 Series", "3 Series", ...] }
 ```
 
 ## `POST /recommend` — free-text natural language (RAG)

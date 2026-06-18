@@ -30,9 +30,16 @@ export async function searchCars(params, { signal } = {}) {
   return res.json();
 }
 
-// GET /facets — make / transmission / fuel-type buckets for the filter dropdowns.
+// GET /facets — make / transmission / fuel-type buckets + available years.
 export async function getFacets({ signal } = {}) {
   const res = await fetch(`${BASE}/facets`, { signal });
   if (!res.ok) throw new Error(`Failed to load facets (${res.status})`);
+  return res.json();
+}
+
+// GET /models?make= — distinct models for a make (dependent Model dropdown).
+export async function getModels(make, { signal } = {}) {
+  const res = await fetch(`${BASE}/models?${toQueryString({ make })}`, { signal });
+  if (!res.ok) throw new Error(`Failed to load models (${res.status})`);
   return res.json();
 }
