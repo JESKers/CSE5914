@@ -97,6 +97,8 @@ def facets() -> dict:
             "makes": {"terms": {"field": "make", "size": 100}},
             "transmissions": {"terms": {"field": "transmission_type", "size": 20}},
             "fuel_types": {"terms": {"field": "engine_fuel_type", "size": 20}},
+            # distinct years, newest first, to populate the year-range dropdowns
+            "years": {"terms": {"field": "year", "size": 100, "order": {"_key": "desc"}}},
         },
     }
     resp = es.search(index=settings.es_index, body=body)
@@ -109,4 +111,17 @@ def facets() -> dict:
         "makes": buckets("makes"),
         "transmissions": buckets("transmissions"),
         "fuel_types": buckets("fuel_types"),
+        "years": [b["key"] for b in aggs["years"]["buckets"]],
     }
+
+
+def models(make: str) -> list[str]:
+    """Distinct model names for a given make (drives the dependent Model dropdown)."""
+    es = get_es()
+    body = {
+        "size": 0,
+        "query": {"term": {"make": make}} if make else {"match_all": {}},
+        "aggs": {"models": {"terms": {"field": "model", "size": 1000, "order": {"_key": "asc"}}}},
+    }
+    resp = es.search(index=settings.es_index, body=body)
+    return [b["key"] for b in resp["aggregations"]["models"]["buckets"]]

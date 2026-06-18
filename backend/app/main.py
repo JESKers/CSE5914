@@ -19,6 +19,7 @@ from .es_client import get_es
 from .schemas import (
     CarResult,
     FacetsResponse,
+    ModelsResponse,
     RecommendRequest,
     RecommendResponse,
     SearchFilters,
@@ -97,6 +98,12 @@ def search(
 @app.get("/facets", response_model=FacetsResponse)
 def facets():
     return FacetsResponse(**search_service.facets())
+
+
+@app.get("/models", response_model=ModelsResponse)
+def models(make: str = Query(..., min_length=1, description="make to list models for")):
+    """Distinct models for a make — populates the dependent Model dropdown."""
+    return ModelsResponse(make=make, models=search_service.models(make))
 
 
 @app.post("/recommend", response_model=RecommendResponse)

@@ -63,6 +63,13 @@ class FacetsResponse(BaseModel):
     makes: list[FacetBucket] = []
     transmissions: list[FacetBucket] = []
     fuel_types: list[FacetBucket] = []
+    years: list[int] = []  # distinct years (desc) for the year-range dropdowns
+
+
+class ModelsResponse(BaseModel):
+    """Models available for a given make — drives the dependent Model dropdown."""
+    make: str
+    models: list[str] = []
 
 
 class RecommendRequest(BaseModel):

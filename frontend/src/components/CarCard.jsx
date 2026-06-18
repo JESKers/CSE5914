@@ -1,36 +1,73 @@
-import { Card, CardBody } from "@/components/ui/card";
-import { formatPrice } from "@/lib/utils";
+import { carCategory, carGradient, formatPrice, TRANSMISSION_SHORT } from "@/lib/utils";
 
-// (2) Car card — renders one CarResult (see docs/API_CONTRACT.md).
+const CATEGORY_BADGE = {
+  electric: "Electric",
+  performance: "Performance",
+  luxury: "Luxury",
+  default: "Standard",
+};
+
+// One car result, styled to the team reference: a gradient "visual" header with
+// the year + category badge, then make/model + MSRP, a spec grid, and tags.
+// Specs are mapped to the fields the API actually returns (see API_CONTRACT.md).
 export default function CarCard({ car }) {
-  return (
-    <Card className="transition-shadow hover:shadow-md">
-      <CardBody className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-base font-semibold leading-tight">
-            {car.year} {car.make} {car.model}
-          </h3>
-          <span className="whitespace-nowrap text-base font-bold text-blue-700">
-            {formatPrice(car.msrp)}
-          </span>
-        </div>
-        <p className="text-sm text-slate-500">
-          {car.vehicle_style}
-          {car.engine_hp ? ` · ${car.engine_hp} hp` : ""}
-          {car.transmission_type ? ` · ${car.transmission_type}` : ""}
-        </p>
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {car.engine_fuel_type && <Tag>{car.engine_fuel_type}</Tag>}
-          {car.highway_mpg != null && <Tag>{car.highway_mpg} hwy mpg</Tag>}
-          {car.city_mpg != null && <Tag>{car.city_mpg} city mpg</Tag>}
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
+  const category = carCategory(car);
 
-function Tag({ children }) {
   return (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{children}</span>
+    <article className="card">
+      <div className="card__visual" style={{ background: carGradient(car) }}>
+        <span className="card__year mono">{"'" + String(car.year).slice(2)}</span>
+        <span className="card__badge">{CATEGORY_BADGE[category]}</span>
+        <span className="card__silhouette" aria-hidden="true">
+          {category === "electric" ? "⚡" : "◈"}
+        </span>
+      </div>
+
+      <div className="card__body-inner">
+        <div className="card__headrow">
+          <div>
+            <p className="card__make mono">{car.make}</p>
+            <h3 className="card__model">{car.model}</h3>
+          </div>
+          <div className="card__price">
+            <span className="card__price-val">{formatPrice(car.msrp)}</span>
+            <span className="card__price-label mono">MSRP</span>
+          </div>
+        </div>
+
+        <dl className="card__specs">
+          <div className="spec">
+            <dt className="mono">PWR</dt>
+            <dd>{car.engine_hp != null ? `${car.engine_hp} hp` : "—"}</dd>
+          </div>
+          <div className="spec">
+            <dt className="mono">TRANS</dt>
+            <dd>{TRANSMISSION_SHORT[car.transmission_type] || "—"}</dd>
+          </div>
+          <div className="spec">
+            <dt className="mono">STYLE</dt>
+            <dd>{car.vehicle_style || "—"}</dd>
+          </div>
+          <div className="spec">
+            <dt className="mono">HWY</dt>
+            <dd>{car.highway_mpg != null ? `${car.highway_mpg} mpg` : "—"}</dd>
+          </div>
+          <div className="spec">
+            <dt className="mono">CITY</dt>
+            <dd>{car.city_mpg != null ? `${car.city_mpg} mpg` : "—"}</dd>
+          </div>
+          <div className="spec">
+            <dt className="mono">YEAR</dt>
+            <dd>{car.year}</dd>
+          </div>
+        </dl>
+
+        {car.engine_fuel_type && (
+          <div className="card__tags">
+            <span className="tag">{car.engine_fuel_type}</span>
+          </div>
+        )}
+      </div>
+    </article>
   );
 }

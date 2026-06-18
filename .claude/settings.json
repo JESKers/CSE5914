@@ -58,7 +58,18 @@
       "Bash(echo \"ES   :9200  -> $\\(curl -s -o /dev/null -w '%{http_code}' http://localhost:9200/_cluster/health\\)\")",
       "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/health)",
       "Bash(echo \"API  :8000  -> $\\(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/health\\)\")",
-      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:5173)",
+      "Bash(curl -s \"http://localhost:5173/api/models?make=Toyota\")",
+      "Bash(curl -s \"http://localhost:5173/api/search?make=BMW&model=M4&size=3\")",
+      "WebFetch(domain:charming-nasturtium-864f11.netlify.app)",
+      "Bash(curl -s https://charming-nasturtium-864f11.netlify.app/ -o jesk_index.html)",
+      "Bash(curl -s https://charming-nasturtium-864f11.netlify.app/assets/index-DJD0Y0Xo.css -o jesk.css)",
+      "Bash(curl -s https://charming-nasturtium-864f11.netlify.app/assets/index-X1uaQkM0.js -o jesk.js)",
+      "Bash(cat index.html)",
+      "Bash(cat tailwind.config.js)",
+      "Bash(cat src/lib/utils.js)",
+      "Bash(cat src/components/ui/card.jsx)",
+      "Bash(cat src/components/ui/input.jsx)"
     ]
   }
 }
