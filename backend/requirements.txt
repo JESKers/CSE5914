@@ -1,0 +1,17 @@
+# Runtime deps for the FastAPI service (Owner: Eric).
+# This service imports the `search` package (ES) and `rag.parser` (LLM),
+# so it pulls in their runtime deps too — but NOT the heavy offline-only
+# pieces (faiss/sentence-transformers live in rag/requirements.txt).
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.0
+
+# search core — pin to the 8.x client to match the ES 8.13 server. A 9.x client
+# sends an "Accept: ...compatible-with=9" header the 8.x server rejects (HTTP 400).
+elasticsearch>=8.13.0,<9.0.0
+pandas>=2.2.0
+
+# /recommend NL parser
+anthropic>=0.40.0
