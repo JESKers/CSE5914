@@ -3,5 +3,7 @@
 # header is rejected by the 8.x server with HTTP 400).
 elasticsearch>=8.13.0,<9.0.0
 pandas>=2.2.0
+# NHTSA vPIC client (search/vpic.py) — brand verification, models, VIN decode
+httpx>=0.27.0
 # notebook profiling
 jupyter>=1.0.0

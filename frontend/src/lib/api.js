@@ -43,3 +43,50 @@ export async function getModels(make, { signal } = {}) {
   if (!res.ok) throw new Error(`Failed to load models (${res.status})`);
   return res.json();
 }
+
+// --------------------------------------------------------------------------- //
+// Buy / Rent store (additive — see docs/STORE_VPIC.md)
+// --------------------------------------------------------------------------- //
+
+// GET /store/listings — same filters as /search plus `mode` (buy|rent). In rent
+// mode, price_min/max are daily-rent. Returns { results, total, mode, page, size }.
+export async function getListings(params, { signal } = {}) {
+  const res = await fetch(`${BASE}/store/listings?${toQueryString(params)}`, { signal });
+  if (!res.ok) {
+    let detail = `Listings failed (${res.status})`;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+// POST /store/orders — purchase or rent. body: { vehicle_id, mode, rent_days?, customer? }
+export async function createOrder(body) {
+  const res = await fetch(`${BASE}/store/orders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `Order failed (${res.status})`);
+  return data;
+}
+
+// GET /store/orders — order history.
+export async function getOrders({ signal } = {}) {
+  const res = await fetch(`${BASE}/store/orders`, { signal });
+  if (!res.ok) throw new Error(`Failed to load orders (${res.status})`);
+  return res.json();
+}
+
+// GET /vpic/decode/{vin} — live VIN decode via the NHTSA vPIC API.
+export async function decodeVin(vin, { signal } = {}) {
+  const res = await fetch(`${BASE}/vpic/decode/${encodeURIComponent(vin)}`, { signal });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `VIN decode failed (${res.status})`);
+  return data;
+}
