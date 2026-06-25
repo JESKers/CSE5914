@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JESKers — Buy &amp; Rent Cars</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🚗 JESKers <span>Auto Store</span></div>
+    <div class="mode-toggle" id="modeToggle">
+      <button data-mode="buy" class="active">Buy</button>
+      <button data-mode="rent">Rent</button>
+    </div>
+    <div class="topbar-right">
+      <span class="vpic-badge" title="Brands verified against the NHTSA vPIC database">NHTSA vPIC verified</span>
+      <button id="ordersBtn" class="ghost">My Orders</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Filters -->
+    <aside class="filters">
+      <h2>Filters</h2>
+
+      <label>Search</label>
+      <input type="text" id="q" placeholder="make or model…" />
+
+      <label>Brand</label>
+      <select id="make"><option value="">All brands</option></select>
+
+      <label>Body style</label>
+      <select id="body_style"><option value="">Any</option></select>
+
+      <label>Fuel</label>
+      <select id="fuel_type"><option value="">Any</option></select>
+
+      <label>Drive</label>
+      <select id="drive"><option value="">Any</option></select>
+
+      <label id="priceLabel">Max price</label>
+      <input type="range" id="max_price" />
+      <div class="range-val"><span id="priceVal"></span></div>
+
+      <label>Min year</label>
+      <input type="number" id="year_min" placeholder="e.g. 2015" min="1990" max="2030" />
+
+      <label>Min seats</label>
+      <select id="min_seats">
+        <option value="">Any</option>
+        <option value="2">2+</option>
+        <option value="4">4+</option>
+        <option value="5">5+</option>
+        <option value="7">7+</option>
+      </select>
+
+      <label>Sort by</label>
+      <select id="sort">
+        <option value="popularity">Most popular</option>
+        <option value="price_asc">Price: low to high</option>
+        <option value="price_desc">Price: high to low</option>
+        <option value="year_desc">Newest</option>
+        <option value="mpg">Best MPG</option>
+      </select>
+
+      <button id="resetBtn" class="ghost full">Reset filters</button>
+      <hr />
+      <button id="recommendBtn" class="primary full">✨ Recommend for me</button>
+    </aside>
+
+    <!-- Results -->
+    <section class="results">
+      <div class="results-head">
+        <span id="resultCount">Loading…</span>
+      </div>
+      <div id="grid" class="grid"></div>
+      <div class="pager">
+        <button id="prevPage" class="ghost">← Prev</button>
+        <span id="pageInfo"></span>
+        <button id="nextPage" class="ghost">Next →</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Detail / checkout modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <button class="close" id="modalClose">×</button>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
 fastapi
-uvicorn
-jsonschema
-elasticsearch
+uvicorn[standard]
+httpx
+pydantic

@@ -1,62 +1,15 @@
-version: '3.8'
+version: "3.8"
 
+# JESKers — Smart Car Recommendation, Purchase & Rental API.
+# Single self-contained service: FastAPI + SQLite catalog (seeded from data.csv
+# and the NHTSA vPIC make directory). No Elasticsearch required.
 services:
-  es01:
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
-    container_name: es01
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=true
-      - xpack.security.enrollment.enabled=true
-      - ELASTIC_PASSWORD=changeme
-      - KIBANA_PASSWORD=kibana
-    ports:
-      - "9200:9200"
-    networks:
-      - elastic
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
-
-  kib01:
-    image: docker.elastic.co/kibana/kibana:9.4.2
-    container_name: kib01
-    environment:
-      - ELASTICSEARCH_HOSTS=https://es01:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=kibana
-      - ELASTICSEARCH_SSL_VERIFICATIONMODE=none
-    ports:
-      - "5601:5601"
-    networks:
-      - elastic
-    depends_on:
-      - es01
-
-  # ---> YOUR NEW INTEGRATION LAYER <---
   api:
     build: .
-    container_name: fast_api_integration
-    image: python:3.10-slim
+    container_name: jeskers_api
     ports:
       - "8000:8000"
     volumes:
       - .:/app
     working_dir: /app
-    # Run the uvicorn server automatically
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    environment:
-      # Pass the ES credentials to your Python code
-      - ES_HOST=https://es01:9200
-      - ES_USER=elastic
-      - ES_PASSWORD=changeme
-    networks:
-      - elastic
-    depends_on:
-      - es01
-
-networks:
-  elastic:
-    driver: bridge
-
-volumes:
-  es_data:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
