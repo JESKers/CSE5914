@@ -9,32 +9,34 @@ Proves the LLM + vector-store pieces work before the full RAG build.
 cd rag
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...
+ollama serve
+ollama pull llama3.2
+ollama pull nomic-embed-text
 ```
 
-## 1. Confirm LLM access
+## 1. Confirm local LLM access
 ```bash
-python hello_llm.py        # prints a completion + token usage; fails loudly on bad key/quota
+python hello_llm.py
 ```
 
-## 2. Build the vector store
+## 2. Run the local RAG demo
+```bash
+python main.py
+```
+
+## 3. Build the vector store
 Needs `backend/data/cars_clean.json` (Kangjie's cleaned NDJSON) — run
-`python -m app.clean_data` in `backend/` first.
+`python -m search.clean_data` from the repo root first.
 ```bash
-python build_index.py "fuel-efficient SUV"   # builds rag/faiss_index + demos a query
+python build_index.py "fuel-efficient SUV"
 ```
-Embeddings are local (`sentence-transformers/all-MiniLM-L6-v2`) — no extra API key.
-The Anthropic API has no embedding endpoint; for Timebox 3 we can compare this
-against Voyage AI or Elasticsearch `dense_vector`.
 
-## 3. Test queries
+## 4. Test queries
 [test_queries.md](test_queries.md) — the natural-language queries the system must
 handle, with expected structured-filter outputs, for evaluating the NL parser.
 
 ## How this feeds Timebox 3
-- `hello_llm.py` → LLM client pattern reused by `backend/app/nl_search.py`
+- `hello_llm.py` → local Ollama smoke test for the model layer
 - `build_index.py` → embedding + retrieval layer for semantic recommendation
+- `main.py` → simple local RAG entry point without API keys
 - `test_queries.md` → the eval set that scores parser + retrieval quality
-
-Model: `claude-opus-4-8` (latest, most capable). Drop to `claude-haiku-4-5` if
-NL-parse cost/latency becomes an issue at volume.

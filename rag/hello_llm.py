@@ -1,15 +1,22 @@
-"""10-line LLM hello world — confirms the Anthropic key + quota work.
+"""Minimal local-LLM hello world for the rag package.
 
-Owner: Jerry. Run:  ANTHROPIC_API_KEY=sk-ant-... python hello_llm.py
-Raises AuthenticationError on a bad key, RateLimitError if out of quota.
+This uses a local Ollama model and does not require an API key.
 """
-from anthropic import Anthropic
+from langchain_core.messages import HumanMessage
 
-client = Anthropic()  # reads ANTHROPIC_API_KEY from the environment
-resp = client.messages.create(
-    model="claude-opus-4-8",
-    max_tokens=256,
-    messages=[{"role": "user", "content": "Reply with one sentence confirming the JESKers car recommender LLM is online."}],
-)
-print(resp.content[0].text)
-print(f"[ok] model={resp.model}  tokens in={resp.usage.input_tokens} out={resp.usage.output_tokens}")
+try:
+    from .ollama_utils import get_chat_model
+except ImportError:  # pragma: no cover - allows direct script execution
+    from ollama_utils import get_chat_model
+
+
+def main() -> None:
+    prompt = "Reply with one sentence confirming the JESKers car recommender LLM is online."
+    llm = get_chat_model(temperature=0.0)
+    response = llm.invoke([HumanMessage(content=prompt)])
+    text = response.content if hasattr(response, "content") else str(response)
+    print(text)
+
+
+if __name__ == "__main__":
+    main()

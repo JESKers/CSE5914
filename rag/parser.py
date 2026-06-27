@@ -1,16 +1,22 @@
 """Natural-language -> structured filters (Timebox 3 spike).
 
-Owner: Jerry. Turns "fast sports car under $50,000" into SearchFilters, which
-the backend hands to search.search_service.search(). The de-risking prototype
-for the RAG/LLM recommendation deliverable — exercised via POST /recommend.
-
-Evaluated against rag/test_queries.md.
+Uses a local Ollama chat model so the rag package can run without an API key.
 """
 import json
+import sys
+from pathlib import Path
 
-from anthropic import Anthropic
+from langchain_core.messages import HumanMessage
 
-from backend.app.config import settings
+try:
+    from .ollama_utils import get_chat_model
+except ImportError:  # pragma: no cover - allows direct script execution
+    from ollama_utils import get_chat_model
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
 from backend.app.schemas import SearchFilters
 
 _SYSTEM = """You translate a car shopper's request into JSON search filters.
@@ -25,15 +31,11 @@ Rules:
 
 
 def parse_query(query: str) -> SearchFilters:
-    """Ask the LLM for structured filters; validate against the schema."""
-    client = Anthropic(api_key=settings.anthropic_api_key)
-    resp = client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=512,
-        system=_SYSTEM,
-        messages=[{"role": "user", "content": query}],
-    )
-    raw = resp.content[0].text.strip()
+    """Ask the local Ollama model for structured filters and validate the schema."""
+    llm = get_chat_model(temperature=0.0)
+    response = llm.invoke([HumanMessage(content=f"{_SYSTEM}\n\nUser query: {query}")])
+    raw = response.content if hasattr(response, "content") else str(response)
+    raw = raw.strip()
     if raw.startswith("```"):  # tolerate fenced code blocks
         raw = raw.split("```")[1].lstrip("json").strip()
     data = json.loads(raw)
