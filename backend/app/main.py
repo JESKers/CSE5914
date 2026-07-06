@@ -109,9 +109,7 @@ def models(make: str = Query(..., min_length=1, description="make to list models
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend(req: RecommendRequest):
     """Free-text natural-language recommendation (RAG/LLM spike, Timebox 3 prep)."""
-    if not settings.anthropic_api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
-    from rag.parser import parse_query  # lazy import: only /recommend needs anthropic
+    from rag.parser import parse_query  # lazy import: only /recommend needs the local parser
 
     filters = parse_query(req.query)
     res = search_service.search(filters)

@@ -11,5 +11,7 @@ COPY backend ./backend
 COPY search ./search
 COPY rag/__init__.py rag/parser.py ./rag/
 
+RUN chmod +x /app/backend/docker-entrypoint.sh
+
 EXPOSE 8000
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]

@@ -32,23 +32,86 @@ from the **repo root** (`uvicorn backend.app.main:app`, `python -m search.ingest
 
 ## Quick start
 
-```bash
-cp .env.example .env                       # fill ANTHROPIC_API_KEY to test /recommend
-docker compose up -d                       # Elasticsearch + Kibana + backend
-
-# download data.csv from Kaggle into data/, then clean + seed ES (from repo root):
-docker compose exec backend python -m search.clean_data   # data.csv -> cars_clean.json
-docker compose exec backend python -m search.ingest       # cars_clean.json -> ES
-```
-
-- Backend API docs: http://localhost:8000/docs · Health: http://localhost:8000/health
-- Kibana: http://localhost:5601
-
-Frontend (runs locally in dev):
+1. Copy the example env file and enable local Ollama settings.
 
 ```bash
-cd frontend && npm install && npm run dev    # http://localhost:5173
+cp .env.example .env
 ```
+
+Then edit `.env` to include:
+
+```dotenv
+ES_HOST=http://elasticsearch:9200
+ES_INDEX=cars
+ES_USER=
+ES_PASSWORD=
+
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_CHAT_MODEL=llama3.2
+OLLAMA_EMBED_MODEL=nomic-embed-text
+
+CORS_ORIGINS=http://localhost:5173,http://localhost:8080
+```
+
+> `ANTHROPIC_API_KEY` is optional. The current recommendation flow uses local Ollama `llama3.2`.
+
+2. Start backend services and Ollama.
+
+```bash
+docker compose up -d
+```
+
+This launches:
+- Elasticsearch: `http://localhost:9200`
+- Kibana: `http://localhost:5601`
+- Backend API: `http://localhost:8000`
+- Ollama service: `http://localhost:11434`
+
+3. Seed Elasticsearch with the car dataset.
+
+```bash
+docker compose exec backend python -m search.clean_data
+docker compose exec backend python -m search.ingest
+```
+
+4. Start the frontend.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the app at `http://localhost:5173`.
+
+### Verify it works
+
+- Backend health: `http://localhost:8000/health`
+- Backend docs: `http://localhost:8000/docs`
+- Frontend: `http://localhost:5173`
+
+### Alternative local backend run
+
+From the repo root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+pip install -r search/requirements.txt
+pip install -r rag/requirements.txt
+uvicorn backend.app.main:app --reload
+```
+
+Run Ollama locally:
+
+```bash
+ollama pull llama3.2
+ollama pull nomic-embed-text
+ollama serve
+```
+
+Then use the frontend or `POST /api/recommend` against `http://localhost:8000`.
 
 ## Local dev — backend only
 

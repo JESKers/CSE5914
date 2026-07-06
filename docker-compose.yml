@@ -5,8 +5,6 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    ports:
-      - "9200:9200"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -17,8 +15,6 @@ services:
     image: docker.elastic.co/kibana/kibana:8.13.4
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-    ports:
-      - "5601:5601"
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -33,7 +29,7 @@ services:
     volumes:
       - ./data:/app/data        # drop data.csv / cars_clean.json here without rebuilding
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -43,7 +39,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    container_name: ragllm_ollama
+    container_name: ollama
     restart: unless-stopped
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
@@ -52,7 +48,7 @@ services:
 
   ollama-pull:
     image: ollama/ollama:latest
-    container_name: ragllm_ollama_pull
+    container_name: ollama_pull
     depends_on:
       - ollama
     environment:
@@ -66,14 +62,14 @@ services:
         ollama pull nomic-embed-text
     restart: "no"
 
-  ragllm:
+  rag:
     build:
-      context: ./ragllm
+      context: ./rag
       dockerfile: Dockerfile
-    container_name: ragllm_app
+    container_name: rag_app
     working_dir: /app
     volumes:
-      - ./ragllm:/app
+      - ./rag:/app
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: llama3.2

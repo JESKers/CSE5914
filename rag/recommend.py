@@ -4,7 +4,9 @@ This intentionally avoids any API key and uses local models via Ollama.
 It can work with a simple CSV/JSON dataset or later be connected to Elasticsearch.
 """
 import os
+import sys
 from pathlib import Path
+from typing import List
 
 from langchain_community.vectorstores import FAISS
 
@@ -17,11 +19,16 @@ ROOT = Path(__file__).resolve().parent.parent
 DATASET = Path(__file__).resolve().parent / "data_small.csv"
 INDEX_DIR = Path(__file__).resolve().parent / "faiss_index"
 
-PROMPT_TEMPLATE = """
-Human: You are an AI assistant that answers questions using the provided context.
-Use only the provided information when possible.
-If you don't know the answer, say that you don't know.
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
 
+from backend.app.schemas import SearchFilters  # noqa: E402
+from search import search_service  # noqa: E402
+
+PROMPT_TEMPLATE = """
+Human: You are an AI assistant, and provide answers to questions using the provided car data.
+Use the following pieces of information to provide a concise answer to the question enclosed in <question> tags.
+If you don't know the answer, say that you don't know, don't try to make up an answer.
 <context>
 {context}
 </context>
@@ -38,7 +45,7 @@ def index_exists() -> bool:
 
 
 def build_demo_index():
-    """Create a minimal FAISS index from the ragllm demo CSV if available."""
+    """Create a minimal FAISS index from the demo CSV if available."""
     if not DATASET.exists():
         raise FileNotFoundError(f"Dataset not found: {DATASET}")
 
@@ -62,29 +69,50 @@ def load_index():
     return FAISS.load_local(str(INDEX_DIR), embeddings, allow_dangerous_deserialization=True)
 
 
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+def format_car(car: dict) -> str:
+    lines = [
+        f"{car.get('year', '?')} {car.get('make', '')} {car.get('model', '')}".strip(),
+        f"Body: {car.get('vehicle_style')}" if car.get("vehicle_style") else None,
+        f"Engine: {car.get('engine_hp')} hp {car.get('engine_fuel_type')}" if car.get("engine_hp") else None,
+        f"Transmission: {car.get('transmission_type')}" if car.get("transmission_type") else None,
+        f"MSRP: ${int(car['msrp']):,}" if car.get("msrp") else None,
+        f"City MPG: {car.get('city_mpg')}" if car.get("city_mpg") else None,
+        f"Highway MPG: {car.get('highway_mpg')}" if car.get("highway_mpg") else None,
+    ]
+    return "\n".join(line for line in lines if line)
 
 
-def make_chain(vectorstore=None):
-    llm = get_chat_model()
-    retriever = (vectorstore or load_index()).as_retriever()
+def format_docs(docs: List[dict]) -> str:
+    return "\n\n".join(format_car(doc) for doc in docs)
 
-    def chain(question: str) -> str:
-        docs = retriever.invoke(question)
-        context = format_docs(docs)
-        prompt = PROMPT_TEMPLATE.format(context=context, question=question)
+
+def retrieve_es_documents(query: str, top_k: int = 5) -> dict:
+    filters = SearchFilters(q=query, page=1, size=top_k)
+    return search_service.search(filters)
+
+
+def recommend(query: str, rebuild: bool = False, top_k: int = 5):
+    """Answer a free-text question using Elasticsearch results as retrieval context."""
+    try:
+        search_results = retrieve_es_documents(query, top_k=top_k)
+        if not search_results["results"]:
+            return "I found no matching cars in Elasticsearch for that query."
+
+        context = format_docs(search_results["results"])
+        prompt = PROMPT_TEMPLATE.format(context=context, question=query)
+        llm = get_chat_model()
         response = llm.invoke(prompt)
         return response.content if hasattr(response, "content") else str(response)
-
-    return chain
-
-
-def recommend(query: str, rebuild: bool = False):
-    if rebuild or not index_exists():
-        build_demo_index()
-    chain = make_chain()
-    return chain(query)
+    except Exception:
+        if rebuild or not index_exists():
+            store = build_demo_index()
+            docs = store.similarity_search(query, k=top_k)
+            context = "\n\n".join(doc.page_content for doc in docs)
+            prompt = PROMPT_TEMPLATE.format(context=context, question=query)
+            llm = get_chat_model()
+            response = llm.invoke(prompt)
+            return response.content if hasattr(response, "content") else str(response)
+        raise
 
 
 if __name__ == "__main__":

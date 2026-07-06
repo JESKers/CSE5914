@@ -3,6 +3,8 @@
 De-risking prototype for the **Timebox 3** Smart Car Recommendation System.
 Proves the LLM + vector-store pieces work before the full RAG build.
 
+> The legacy `ragllm` demo has been merged into this `rag` package. The Docker service now builds from `./rag`.
+
 ## Setup
 
 ```bash
@@ -23,6 +25,8 @@ python hello_llm.py
 ```bash
 python main.py
 ```
+
+This demo will now use Elasticsearch to retrieve matching car documents and Ollama `llama3.2` for answer generation.
 
 ## 3. Build the vector store
 Needs `backend/data/cars_clean.json` (Kangjie's cleaned NDJSON) — run
