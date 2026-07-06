@@ -81,3 +81,72 @@ class RecommendResponse(BaseModel):
     results: list[CarResult]
     total: int
     query_echo: dict
+
+
+# --------------------------------------------------------------------------- #
+# Buy / Rent store — additive feature (see docs/STORE_VPIC.md). These extend,
+# but do not modify, the frozen /search + /recommend contract above.
+# --------------------------------------------------------------------------- #
+class ListingResult(CarResult):
+    """A catalog car priced and stocked for purchase or rental."""
+    buy_price: float = 0.0
+    rent_daily: float = 0.0
+    seats: Optional[int] = None
+    for_rent: bool = False
+    stock: int = 0
+    vpic_verified: bool = False  # make exists in the NHTSA vPIC directory
+
+
+class ListingsResponse(BaseModel):
+    """Envelope mirroring /search, for store listings."""
+    results: list[ListingResult]
+    total: int
+    mode: str = "buy"           # "buy" | "rent"
+    query_echo: dict = Field(default_factory=dict)
+    page: int = 1
+    size: int = 20
+
+
+class OrderRequest(BaseModel):
+    vehicle_id: str
+    mode: str = Field(description="'buy' or 'rent'")
+    rent_days: Optional[int] = Field(default=None, ge=1, le=365)
+    customer: Optional[str] = None
+
+
+class OrderResponse(BaseModel):
+    order_id: int
+    vehicle: str
+    mode: str
+    rent_days: Optional[int] = None
+    total: float
+    status: str = "confirmed"
+    message: str
+
+
+class Order(BaseModel):
+    id: int
+    vehicle_id: str
+    label: str
+    mode: str
+    rent_days: Optional[int] = None
+    total: float
+    customer: Optional[str] = None
+    created_at: str
+
+
+class OrdersResponse(BaseModel):
+    orders: list[Order] = []
+
+
+class VpicDecodeResponse(BaseModel):
+    vin: str
+    summary: dict = Field(default_factory=dict)
+    raw: dict = Field(default_factory=dict)
+
+
+class VpicModelsResponse(BaseModel):
+    make: str
+    year: Optional[int] = None
+    count: int = 0
+    models: list[str] = []

@@ -2,6 +2,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import SearchPage from "@/pages/SearchPage";
 import RecommendPage from "@/pages/RecommendPage";
+import StorePage from "@/pages/StorePage";
 
 function Nav() {
   return (
@@ -21,6 +22,9 @@ function Nav() {
           </NavLink>
           <NavLink to="/recommend" className={({ isActive }) => cn(isActive && "is-active")}>
             Recommend
+          </NavLink>
+          <NavLink to="/store" className={({ isActive }) => cn(isActive && "is-active")}>
+            Buy / Rent
           </NavLink>
           <a href="#roadmap">Roadmap</a>
         </nav>
@@ -49,6 +53,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<SearchPage />} />
           <Route path="/recommend" element={<RecommendPage />} />
+          <Route path="/store" element={<StorePage />} />
         </Routes>
       </main>
       <Footer />

@@ -125,3 +125,20 @@ def models(make: str) -> list[str]:
     }
     resp = es.search(index=settings.es_index, body=body)
     return [b["key"] for b in resp["aggregations"]["models"]["buckets"]]
+
+
+def get_car(car_id: str) -> dict | None:
+    """Fetch a single car by document id (used by the buy/rent store layer).
+
+    Returns the same {id, ...RESULT_FIELDS} shape as `search`, or None if the id
+    is unknown. Kept here so all ES access stays in the search core.
+    """
+    es = get_es()
+    try:
+        doc = es.get(index=settings.es_index, id=str(car_id))
+    except Exception:
+        return None
+    if not doc.get("found"):
+        return None
+    src = doc["_source"]
+    return {"id": doc["_id"], **{k: src.get(k) for k in RESULT_FIELDS}}
