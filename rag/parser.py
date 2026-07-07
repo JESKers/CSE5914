@@ -32,6 +32,7 @@ Rules:
 
 def parse_query(query: str) -> SearchFilters:
     """Ask the local Ollama model for structured filters and validate the schema."""
+    # This step turns a natural-language request into something the search layer can use.
     llm = get_chat_model(temperature=0.0)
     response = llm.invoke([HumanMessage(content=f"{_SYSTEM}\n\nUser query: {query}")])
     raw = response.content if hasattr(response, "content") else str(response)

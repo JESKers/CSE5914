@@ -31,7 +31,7 @@ def _build_query(f) -> dict:
     if f.q:
         must.append({"multi_match": {
             "query": f.q,
-            "fields": ["text", "make^2", "model^2"],
+            "fields": ["text", "make^2", "model^2", "description^1.5", "url^0.5"],
             "fuzziness": "AUTO",
         }})
 

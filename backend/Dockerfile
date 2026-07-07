@@ -9,9 +9,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # source packages (data/ is mounted as a volume at runtime)
 COPY backend ./backend
 COPY search ./search
-COPY rag/__init__.py rag/parser.py ./rag/
+COPY rag ./rag
+# Demo-specific: copy the presentation script into the backend container.
+COPY demo_rag_es.py /app/demo_rag_es.py
 
-RUN chmod +x /app/backend/docker-entrypoint.sh
+RUN chmod +x /app/backend/docker-entrypoint.sh /app/demo_rag_es.py
 
 EXPOSE 8000
 ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]

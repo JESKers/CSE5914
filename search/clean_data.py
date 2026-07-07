@@ -24,24 +24,25 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DEFAULT_INPUT = DATA_DIR / "data.csv"
 DEFAULT_OUTPUT = DATA_DIR / "cars_clean.json"
 
-# Raw Kaggle header -> snake_case field name
-COLUMN_MAP = {
-    "Make": "make",
-    "Model": "model",
-    "Year": "year",
-    "Engine Fuel Type": "engine_fuel_type",
-    "Engine HP": "engine_hp",
-    "Engine Cylinders": "engine_cylinders",
-    "Transmission Type": "transmission_type",
-    "Driven_Wheels": "driven_wheels",
-    "Number of Doors": "number_of_doors",
-    "Market Category": "market_category",
-    "Vehicle Size": "vehicle_size",
-    "Vehicle Style": "vehicle_style",
-    "highway MPG": "highway_mpg",
-    "city mpg": "city_mpg",
-    "Popularity": "popularity",
-    "MSRP": "msrp",
+# Accept both the legacy Kaggle-style headers and the Craigslist-style headers
+# that are present in the repo's current data file.
+COLUMN_ALIASES = {
+    "make": ["Make", "make", "Manufacturer", "manufacturer"],
+    "model": ["Model", "model"],
+    "year": ["Year", "year"],
+    "engine_fuel_type": ["Engine Fuel Type", "Engine Fuel Type ", "fuel"],
+    "engine_hp": ["Engine HP", "engine_hp"],
+    "engine_cylinders": ["Engine Cylinders", "cylinders"],
+    "transmission_type": ["Transmission Type", "transmission"],
+    "driven_wheels": ["Driven_Wheels", "drive"],
+    "number_of_doors": ["Number of Doors", "Number of Doors "],
+    "market_category": ["Market Category"],
+    "vehicle_size": ["Vehicle Size", "size"],
+    "vehicle_style": ["Vehicle Style", "type"],
+    "highway_mpg": ["highway MPG"],
+    "city_mpg": ["city mpg"],
+    "popularity": ["Popularity", "popularity"],
+    "msrp": ["MSRP", "price"],
 }
 
 NUMERIC_INT = ["year", "engine_cylinders", "number_of_doors", "highway_mpg",
@@ -59,21 +60,47 @@ def _impute_by_make(df: pd.DataFrame, col: str) -> pd.DataFrame:
 def clean(input_path: Path) -> pd.DataFrame:
     df = pd.read_csv(input_path)
 
-    # 1. snake_case column names
-    df = df.rename(columns=COLUMN_MAP)
+    # 1. normalize columns to the schema expected by ES and the API
+    renamed = {}
+    for target, aliases in COLUMN_ALIASES.items():
+        for alias in aliases:
+            if alias in df.columns:
+                renamed[alias] = target
+                break
+    df = df.rename(columns=renamed)
+
+    # The repo's current file uses `manufacturer` and `model` values that are
+    # not captured by the earlier Kaggle-style column names. Fill the normalized
+    # fields from the exact raw columns present in this dataset.
+    if "make" not in df.columns:
+        df["make"] = df["manufacturer"] if "manufacturer" in df.columns else pd.NA
+    if "model" not in df.columns:
+        df["model"] = df["model"] if "model" in df.columns else pd.NA
+
+    # Fill in missing values for the common vehicle fields used by the demo.
+    for col in ["engine_fuel_type", "transmission_type", "vehicle_style", "vehicle_size"]:
+        if col not in df.columns:
+            df[col] = pd.NA
+
+    # If the raw file still has values under the original names, copy them over.
+    for source, target in [("manufacturer", "make"), ("model", "model")]:
+        if source in df.columns and target in df.columns:
+            mask = df[target].isna()
+            if mask.any():
+                df.loc[mask, target] = df.loc[mask, source]
 
     # "N/A" market category -> real null
-    if "market_category" in df:
+    if "market_category" in df.columns:
         df["market_category"] = df["market_category"].replace("N/A", pd.NA)
 
     # 2. numeric casts (coerce bad values to NaN first)
     for col in ["engine_hp", "msrp"] + NUMERIC_INT:
-        if col in df:
+        if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # 3. impute Engine HP + MPG nulls
     for col in IMPUTE_COLS:
-        if col in df:
+        if col in df.columns:
             df = _impute_by_make(df, col)
 
     # 4. dedupe identical listings
@@ -83,15 +110,21 @@ def clean(input_path: Path) -> pd.DataFrame:
 
     # whole-number columns: cast to nullable Int after imputation
     for col in ["engine_hp"] + NUMERIC_INT:
-        if col in df:
+        if col in df.columns:
             df[col] = df[col].round().astype("Int64")
 
     # 5. combined free-text field for keyword search
-    parts = ["make", "model", "market_category", "vehicle_style"]
-    df["text"] = (
-        df[parts].fillna("").astype(str).agg(" ".join, axis=1)
-        .str.replace(r"\s+", " ", regex=True).str.strip()
-    )
+    text_parts = [c for c in ["make", "model", "market_category", "vehicle_style", "description", "url"] if c in df.columns]
+    if text_parts:
+        text_df = df[text_parts].copy()
+        for col in text_df.columns:
+            text_df[col] = text_df[col].fillna("").astype(str)
+        df["text"] = (
+            text_df.agg(" ".join, axis=1)
+            .str.replace(r"\s+", " ", regex=True).str.strip()
+        )
+    else:
+        df["text"] = ""
 
     return df
 

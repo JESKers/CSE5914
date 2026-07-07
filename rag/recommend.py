@@ -16,7 +16,9 @@ except ImportError:  # pragma: no cover - allows direct script execution
     from ollama_utils import get_chat_model, get_embeddings
 
 ROOT = Path(__file__).resolve().parent.parent
+# The demo dataset lives next to this file, so the fallback path can still work offline.
 DATASET = Path(__file__).resolve().parent / "data_small.csv"
+# FAISS needs a place to persist its index between runs.
 INDEX_DIR = Path(__file__).resolve().parent / "faiss_index"
 
 if str(ROOT) not in sys.path:
@@ -46,6 +48,7 @@ def index_exists() -> bool:
 
 def build_demo_index():
     """Create a minimal FAISS index from the demo CSV if available."""
+    # If the demo file is present, this gives the fallback path something concrete to work with.
     if not DATASET.exists():
         raise FileNotFoundError(f"Dataset not found: {DATASET}")
 
@@ -87,12 +90,14 @@ def format_docs(docs: List[dict]) -> str:
 
 
 def retrieve_es_documents(query: str, top_k: int = 5) -> dict:
+    # This is the main retrieval step: turn the user question into a search request.
     filters = SearchFilters(q=query, page=1, size=top_k)
     return search_service.search(filters)
 
 
 def recommend(query: str, rebuild: bool = False, top_k: int = 5):
     """Answer a free-text question using Elasticsearch results as retrieval context."""
+    # The first try uses the search index as context, which is the cleaner path for this demo.
     try:
         search_results = retrieve_es_documents(query, top_k=top_k)
         if not search_results["results"]:

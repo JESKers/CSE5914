@@ -11,6 +11,7 @@ except ImportError:  # pragma: no cover - allows direct script execution
 
 
 def main() -> None:
+    # This is a tiny smoke test to make sure the local model is reachable.
     prompt = "Reply with one sentence confirming the JESKers car recommender LLM is online."
     llm = get_chat_model(temperature=0.0)
     response = llm.invoke([HumanMessage(content=prompt)])

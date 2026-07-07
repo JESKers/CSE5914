@@ -8,6 +8,7 @@ from langchain_core.embeddings import Embeddings
 
 class OllamaChatModel:
     """Small wrapper around the local Ollama chat API."""
+    # This wrapper keeps the Ollama request details in one tidy place.
 
     def __init__(self, model: str, base_url: str, temperature: float = 0.2):
         self.model = model
@@ -23,6 +24,7 @@ class OllamaChatModel:
         return str(message)
 
     def invoke(self, messages):
+        # The model call is intentionally simple, which makes it easier to swap in another backend later.
         if isinstance(messages, str):
             prompt = messages
         else:
@@ -41,6 +43,7 @@ class OllamaChatModel:
 
 class LocalOllamaEmbeddings(Embeddings):
     """Embeddings adapter for local Ollama."""
+    # Embeddings are batched here so the requests stay manageable and predictable.
 
     def __init__(self, model: str, base_url: str, batch_size: int = 8):
         self.model = model
