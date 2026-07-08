@@ -16,7 +16,9 @@ result instead of an exception, so the rest of the API keeps working offline.
 """
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
 from threading import Lock
 from typing import Any
 
@@ -26,8 +28,15 @@ BASE_URL = "https://vpic.nhtsa.dot.gov/api/vehicles"
 DEFAULT_TIMEOUT = 12.0
 CACHE_TTL_SECONDS = 60 * 60  # 1 hour
 
+# Local model snapshot produced by `python -m search.fetch_vpic_models` — the
+# vPIC models for the makes actually in our catalog. Lets model lookups answer
+# offline/instantly; see snapshot_models_for_make().
+SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "vpic_models.json"
+
 _cache: dict[str, tuple[float, Any]] = {}
 _cache_lock = Lock()
+_snapshot: dict[str, Any] | None = None
+_snapshot_lock = Lock()
 
 
 def _cache_get(key: str) -> Any | None:
@@ -98,6 +107,34 @@ def get_models_for_make(make: str, year: int | None = None) -> list[dict[str, An
     else:
         data = _get(f"GetModelsForMake/{make}")
     return data.get("Results", [])
+
+
+def _load_snapshot() -> dict[str, Any]:
+    """Load (and cache) the on-disk vPIC model snapshot; {} if not built yet."""
+    global _snapshot
+    if _snapshot is None:
+        with _snapshot_lock:
+            if _snapshot is None:
+                try:
+                    _snapshot = json.loads(SNAPSHOT_PATH.read_text())
+                except (OSError, ValueError):
+                    _snapshot = {}
+    return _snapshot
+
+
+def snapshot_models_for_make(make: str) -> list[str] | None:
+    """Model names for a make from the local snapshot, or None if absent.
+
+    Case-insensitive on make. Returns None (not []) when the make isn't in the
+    snapshot, so callers can distinguish "no snapshot" from "make has no models"
+    and fall back to a live vPIC call.
+    """
+    makes = _load_snapshot().get("makes", {})
+    if make in makes:
+        return makes[make]["models"]
+    lowered = {k.lower(): v for k, v in makes.items()}
+    hit = lowered.get(make.strip().lower())
+    return hit["models"] if hit else None
 
 
 def get_vehicle_types_for_make(make: str) -> list[dict[str, Any]]:
