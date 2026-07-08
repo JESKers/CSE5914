@@ -273,7 +273,18 @@ def vpic_decode(vin: str, year: int | None = None):
 
 @app.get("/vpic/models", response_model=VpicModelsResponse)
 def vpic_models(make: str = Query(..., min_length=1), year: int | None = None):
-    """Live model list for a make (optionally a model year) from vPIC."""
+    """Model list for a make from vPIC.
+
+    Without a year, answers from the local snapshot (data/vpic_models.json, built
+    by `python -m search.fetch_vpic_models`) so catalog makes resolve instantly
+    and offline; falls back to a live vPIC call when the make isn't snapshotted or
+    a specific model year is requested.
+    """
+    if year is None:
+        snapshot = vpic.snapshot_models_for_make(make)
+        if snapshot is not None:
+            return VpicModelsResponse(make=make, year=None, count=len(snapshot), models=snapshot)
+
     models_ = vpic.get_models_for_make(make, year)
     return VpicModelsResponse(
         make=make, year=year, count=len(models_),
