@@ -83,6 +83,37 @@ export async function getOrders({ signal } = {}) {
   return res.json();
 }
 
+// --------------------------------------------------------------------------- //
+// AI buy/rent assistant (additive — agentic chat, see backend/app/agent.py)
+// --------------------------------------------------------------------------- //
+
+// POST /assistant/chat — one conversational turn. body: { message, session_id? }.
+// Returns { session_id, reply, events: [{tool, summary, is_error}] }. The agent
+// may run many tool calls per turn, so allow a long-running request.
+export async function sendChat(body, { signal } = {}) {
+  const res = await fetch(`${BASE}/assistant/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `Assistant failed (${res.status})`);
+  return data;
+}
+
+// DELETE /assistant/chat/{session_id} — drop the server-side conversation.
+export async function resetChat(sessionId) {
+  await fetch(`${BASE}/assistant/chat/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+}
+
+// GET /assistant/bookings — rentals + test drives the agent has confirmed.
+export async function getAssistantBookings({ signal } = {}) {
+  const res = await fetch(`${BASE}/assistant/bookings`, { signal });
+  if (!res.ok) throw new Error(`Failed to load bookings (${res.status})`);
+  return res.json();
+}
+
 // GET /vpic/decode/{vin} — live VIN decode via the NHTSA vPIC API.
 export async function decodeVin(vin, { signal } = {}) {
   const res = await fetch(`${BASE}/vpic/decode/${encodeURIComponent(vin)}`, { signal });

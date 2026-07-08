@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import SearchPage from "@/pages/SearchPage";
 import RecommendPage from "@/pages/RecommendPage";
 import StorePage from "@/pages/StorePage";
+import AssistantPage from "@/pages/AssistantPage";
 
 function Nav() {
   return (
@@ -25,6 +26,9 @@ function Nav() {
           </NavLink>
           <NavLink to="/store" className={({ isActive }) => cn(isActive && "is-active")}>
             Buy / Rent
+          </NavLink>
+          <NavLink to="/assistant" className={({ isActive }) => cn(isActive && "is-active")}>
+            Assistant
           </NavLink>
           <a href="#roadmap">Roadmap</a>
         </nav>
@@ -54,6 +58,7 @@ export default function App() {
           <Route path="/" element={<SearchPage />} />
           <Route path="/recommend" element={<RecommendPage />} />
           <Route path="/store" element={<StorePage />} />
+          <Route path="/assistant" element={<AssistantPage />} />
         </Routes>
       </main>
       <Footer />

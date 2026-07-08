@@ -22,11 +22,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from search import search_service, vpic
 
-from . import store
+from . import store, synth
 from .config import settings
 from .es_client import get_es
 from .schemas import (
+    AssistantBookingsResponse,
     CarResult,
+    ChatRequest,
+    ChatResponse,
     FacetsResponse,
     ListingResult,
     ListingsResponse,
@@ -251,6 +254,49 @@ def store_create_order(req: OrderRequest):
 @app.get("/store/orders", response_model=OrdersResponse)
 def store_order_history():
     return OrdersResponse(orders=store.list_orders())
+
+
+# =========================================================================== #
+# Buy/Rent AI assistant (additive — agentic chat over the store + synth layers)
+# =========================================================================== #
+@app.post("/assistant/chat", response_model=ChatResponse)
+def assistant_chat(req: ChatRequest):
+    """One conversational turn with the buy/rent agent.
+
+    The agent runs a Claude tool-use loop (see backend/app/agent.py): rentals
+    are handled end-to-end (search -> add-ons -> insurance -> booking with a
+    confirmation number); purchases get TCO/finance analysis, a test-drive
+    appointment and a dealer handoff. Conversation state is held server-side
+    per session_id.
+    """
+    if not settings.anthropic_api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
+    from . import agent  # lazy import: only /assistant needs anthropic
+
+    session_id = req.session_id or agent.new_session_id()
+    try:
+        result = agent.chat(session_id, req.message)
+    except Exception as exc:
+        raise HTTPException(502, f"Assistant unavailable: {exc}")
+    return ChatResponse(session_id=session_id, reply=result["reply"], events=result["events"])
+
+
+@app.delete("/assistant/chat/{session_id}")
+def assistant_reset(session_id: str):
+    """Drop a conversation so the next message starts a fresh session."""
+    from . import agent
+
+    agent.reset_session(session_id)
+    return {"status": "reset", "session_id": session_id}
+
+
+@app.get("/assistant/bookings", response_model=AssistantBookingsResponse)
+def assistant_bookings():
+    """Rental bookings + test-drive appointments the agent has confirmed."""
+    return AssistantBookingsResponse(
+        rentals=synth.list_rental_bookings(),
+        test_drives=synth.list_test_drive_appointments(),
+    )
 
 
 # =========================================================================== #

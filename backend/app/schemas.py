@@ -139,6 +139,31 @@ class OrdersResponse(BaseModel):
     orders: list[Order] = []
 
 
+class ChatRequest(BaseModel):
+    """One user turn for the buy/rent assistant. Omit session_id to start fresh."""
+    message: str = Field(min_length=1, description="the user's message")
+    session_id: Optional[str] = None
+
+
+class ChatToolEvent(BaseModel):
+    """A tool the agent invoked this turn — rendered as activity in the chat UI."""
+    tool: str
+    summary: str
+    is_error: bool = False
+
+
+class ChatResponse(BaseModel):
+    session_id: str
+    reply: str
+    events: list[ChatToolEvent] = []
+
+
+class AssistantBookingsResponse(BaseModel):
+    """Everything the agent has booked — for demo verification."""
+    rentals: list[dict] = []
+    test_drives: list[dict] = []
+
+
 class VpicDecodeResponse(BaseModel):
     vin: str
     summary: dict = Field(default_factory=dict)
