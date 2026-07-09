@@ -13,6 +13,9 @@ venv/
 # Keep the folder via .gitkeep but ignore everything else in it.
 /data/*
 !/data/.gitkeep
+# ...except the hand-written synthetic reference tables the assistant needs
+# (small JSON, not reproducible from Kaggle data).
+!/data/synth
 
 # RAG vector store (rebuild with rag/build_index.py)
 rag/faiss_index/

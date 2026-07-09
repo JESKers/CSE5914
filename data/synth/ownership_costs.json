@@ -1,0 +1,25 @@
+{
+  "_note": "SYNTHETIC demo data. Annual maintenance/repair, insurance and fuel assumptions. Not real actuarial data.",
+  "maintenance_annual": {
+    "_note": "Base annual maintenance + repair cost (USD) by brand reliability tier, for a young car. Escalated by age below.",
+    "brand_tier": {
+      "high":   {"base": 480, "brands": ["Toyota","Lexus","Honda","Mazda","Hyundai","Kia","Subaru","Acura"]},
+      "medium": {"base": 720, "brands": ["Ford","Chevrolet","Nissan","GMC","Buick","Chrysler","Dodge","Jeep","Ram","Volkswagen","Volvo"]},
+      "low":    {"base": 1350, "brands": ["BMW","Mercedes-Benz","Audi","Porsche","Jaguar","Land Rover","Maserati","Cadillac","Infiniti","Alfa Romeo"]}
+    },
+    "default_base": 800,
+    "age_escalation_per_year": 0.11
+  },
+  "insurance_annual": {
+    "_note": "Annual premium ~= base + value_factor * vehicle_value, with a class multiplier.",
+    "base": 780,
+    "value_factor": 0.018,
+    "class_multiplier": {"economy": 1.0, "midsize": 1.05, "suv": 1.1, "truck": 1.15, "luxury": 1.35, "performance": 1.55}
+  },
+  "fuel": {
+    "gas_price_per_gallon": 3.45,
+    "electricity_price_per_kwh": 0.14,
+    "annual_miles_baseline": 12000
+  },
+  "registration_annual": 130
+}

@@ -21,16 +21,9 @@ function Nav() {
           <NavLink to="/" end className={({ isActive }) => cn(isActive && "is-active")}>
             Search
           </NavLink>
-          <NavLink to="/recommend" className={({ isActive }) => cn(isActive && "is-active")}>
-            Recommend
-          </NavLink>
-          <NavLink to="/store" className={({ isActive }) => cn(isActive && "is-active")}>
-            Buy / Rent
-          </NavLink>
           <NavLink to="/assistant" className={({ isActive }) => cn(isActive && "is-active")}>
             Assistant
           </NavLink>
-          <a href="#roadmap">Roadmap</a>
         </nav>
         <span className="nav__badge mono">Smart Car Search</span>
       </div>

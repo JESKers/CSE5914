@@ -1,0 +1,35 @@
+{
+  "_note": "SYNTHETIC demo data. Auto-loan APRs (annual %) by credit tier. Not real quotes.",
+  "credit_tiers": {
+    "superprime": {"min_score": 780, "label": "Super Prime (780+)"},
+    "prime":      {"min_score": 720, "label": "Prime (720-779)"},
+    "nonprime":   {"min_score": 660, "label": "Nonprime (660-719)"},
+    "subprime":   {"min_score": 600, "label": "Subprime (600-659)"},
+    "deep":       {"min_score": 300, "label": "Deep Subprime (<600)"}
+  },
+  "apr_new": {
+    "superprime": 5.4,
+    "prime": 6.8,
+    "nonprime": 9.6,
+    "subprime": 13.2,
+    "deep": 15.9
+  },
+  "apr_used_premium": {
+    "_note": "Added on top of the new-car APR for used/CPO financing.",
+    "cpo": 1.2,
+    "used": 2.6
+  },
+  "term_premium": {
+    "_note": "APR adjustment (percentage points) by loan term in months.",
+    "36": -0.3,
+    "48": -0.1,
+    "60": 0.0,
+    "72": 0.4,
+    "84": 0.9
+  },
+  "default_down_payment_pct": 0.10,
+  "sales_tax_pct_by_state": {
+    "OH": 0.0725, "CA": 0.0825, "TX": 0.0625, "NY": 0.08, "FL": 0.07, "_default": 0.07
+  },
+  "doc_and_registration_fee": 495
+}

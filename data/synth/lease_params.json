@@ -1,0 +1,25 @@
+{
+  "_note": "SYNTHETIC demo data. Lease money factor + residual value % by segment and term. Not real quotes.",
+  "money_factor_by_credit": {
+    "_note": "Approx APR = money_factor * 2400.",
+    "superprime": 0.00125,
+    "prime": 0.00175,
+    "nonprime": 0.00260,
+    "subprime": 0.00380,
+    "deep": 0.00460
+  },
+  "residual_pct": {
+    "_note": "Share of MSRP retained at lease end, by vehicle segment and term (months).",
+    "economy":  {"24": 0.66, "36": 0.57, "48": 0.48},
+    "midsize":  {"24": 0.64, "36": 0.55, "48": 0.46},
+    "suv":      {"24": 0.68, "36": 0.60, "48": 0.51},
+    "truck":    {"24": 0.70, "36": 0.63, "48": 0.54},
+    "luxury":   {"24": 0.60, "36": 0.50, "48": 0.41},
+    "performance": {"24": 0.62, "36": 0.52, "48": 0.43}
+  },
+  "acquisition_fee": 695,
+  "disposition_fee": 395,
+  "default_term_months": 36,
+  "default_annual_miles": 12000,
+  "excess_mile_charge": 0.25
+}
