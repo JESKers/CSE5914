@@ -6,9 +6,9 @@ import { resetChat, sendChat } from "@/lib/api";
 // activity (searches, quotes, bookings) which we render as an activity trail.
 
 const SUGGESTIONS = [
-  "下周三到周日在哥伦布租一辆七座、带儿童座椅、预算每天 60 刀内",
+  "Rent a 7-seater with a child seat in Columbus from Wed to Sun, under $60/day",
   "Rent an SUV in Columbus this weekend, under $70/day, with GPS",
-  "我想买一辆家用 SUV，预算 4 万刀左右，帮我比较租赁、买新车和 CPO 哪个划算",
+  "I want to buy a family SUV around $40k — compare leasing, buying new, and CPO",
   "Compare leasing vs buying a BMW M4 over 5 years and book me a test drive",
 ];
 
