@@ -16,7 +16,8 @@ Plan: [docs/TIMEBOX2_PLAN.md](docs/TIMEBOX2_PLAN.md) · API: [docs/API_CONTRACT.
 /backend    FastAPI service — wires the API contract together (Eric)
 /search     Elasticsearch index, ingestion, query core (Kangjie)
 /rag        LLM hello-world, vector store, NL query parser (Jerry)
-/data       Kaggle data.csv + generated cars_clean.json (git-ignored)
+/data       Kaggle data.csv + generated files (git-ignored) — except data/synth/,
+            the committed synthetic finance/rental/dealer tables the assistant uses
 /docs       plan + API contract
 ```
 
@@ -32,13 +33,24 @@ from the **repo root** (`uvicorn backend.app.main:app`, `python -m search.ingest
 
 ## Quick start
 
-```bash
-cp .env.example .env                       # fill ANTHROPIC_API_KEY to test /recommend
-docker compose up -d                       # Elasticsearch + Kibana + backend
+Prereqs: Docker (Desktop or colima), Node 18+, a Kaggle account (dataset download),
+and an Anthropic API key per person for the AI Assistant (console.anthropic.com —
+the account needs API credit; Claude app subscriptions don't cover API calls).
 
-# download data.csv from Kaggle into data/, then clean + seed ES (from repo root):
+```bash
+# 1. Env — fill in your own ANTHROPIC_API_KEY (required for /assistant + /recommend)
+cp .env.example .env
+
+# 2. Elasticsearch + Kibana + backend (build bakes the source into the image)
+docker compose up -d --build
+
+# 3. Seed the catalog: download data.csv from the Kaggle dataset linked above
+#    into data/, then clean + ingest (data/ is volume-mounted into the container):
 docker compose exec backend python -m search.clean_data   # data.csv -> cars_clean.json
 docker compose exec backend python -m search.ingest       # cars_clean.json -> ES
+
+# 4. (optional) snapshot vPIC model lists so /vpic/models answers offline:
+docker compose exec backend python -m search.fetch_vpic_models
 ```
 
 - Backend API docs: http://localhost:8000/docs · Health: http://localhost:8000/health
@@ -49,6 +61,23 @@ Frontend (runs locally in dev):
 ```bash
 cd frontend && npm install && npm run dev    # http://localhost:5173
 ```
+
+Smoke test: http://localhost:8000/health should report `"elasticsearch": true`,
+`/search?make=BMW` should return cars, and the **Assistant** page
+(http://localhost:5173/assistant) should complete a rental end-to-end
+(try: "Rent an SUV in Columbus this weekend, under $70/day").
+
+### Gotchas
+
+- **Backend code changes need an image rebuild** — the source is baked in:
+  `docker compose up -d --build backend`. Changing only `.env` needs just
+  `docker compose up -d backend` (recreate, no rebuild).
+- **Empty search results** → step 3 wasn't run (the ES index is empty).
+- **/assistant returns 503** → `ANTHROPIC_API_KEY` missing in `.env`;
+  **400 "credit balance is too low"** → the key's account has no API credit.
+- **ES container unhealthy / exits** → give Docker ≥ 4 GB memory.
+- Runtime artifacts (`data/store.db` order ledger, `data/vehicle_images.json`
+  photo cache) create themselves on first use — never commit them or `.env`.
 
 ## Local dev — backend only
 
@@ -77,5 +106,11 @@ Owner-specific extras: `pip install -r search/requirements.txt` (Jupyter profili
 - `GET /search` — structured filters + `q` keyword search, sort, paging
 - `GET /facets` — make / transmission / fuel-type buckets for dropdowns
 - `POST /recommend` — free-text natural-language query (RAG, Timebox 3)
+- `GET /store/listings` · `POST /store/orders` — Buy/Rent store (additive; see docs/STORE_VPIC.md)
+- `GET /vpic/decode/{vin}` · `GET /vpic/models` — NHTSA vPIC enrichment
+- `POST /assistant/chat` — AI buy/rent agent: rentals booked end-to-end
+  (inventory → add-ons → insurance → confirmation number), buy decisions with
+  TCO/financing analysis, test-drive booking and dealer handoff
+- `GET /assistant/bookings` — everything the agent has booked (demo surface)
 
 Full details: [docs/API_CONTRACT.md](docs/API_CONTRACT.md).
