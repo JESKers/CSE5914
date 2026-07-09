@@ -1,0 +1,13 @@
+{
+  "_note": "SYNTHETIC demo data. Manufacturer cash rebates / APR offers by make. Not real offers.",
+  "cash_rebate_new": {
+    "Ford": 1500, "Chevrolet": 2000, "GMC": 2000, "Ram": 2500, "Jeep": 1000,
+    "Nissan": 1750, "Hyundai": 1250, "Kia": 1000, "Volkswagen": 1500,
+    "Toyota": 500, "Honda": 500, "Mazda": 750, "Subaru": 500,
+    "BMW": 1000, "Mercedes-Benz": 1000, "Audi": 1250, "_default": 750
+  },
+  "cpo_warranty_value": {
+    "_note": "Estimated value of the certified pre-owned warranty, added back as a benefit in comparisons.",
+    "high": 1200, "medium": 900, "low": 1600, "_default": 1000
+  }
+}

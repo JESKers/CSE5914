@@ -1,9 +1,29 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { resetChat, sendChat } from "@/lib/api";
 
 // Chat UI for the buy/rent AI agent (POST /assistant/chat). The agent runs a
 // multi-step tool loop server-side; each turn returns the reply plus the tool
 // activity (searches, quotes, bookings) which we render as an activity trail.
+// Bot replies are GitHub-flavored markdown (tables, bold, car photos).
+// The transcript is kept in sessionStorage so navigating between pages (or a
+// refresh in the same tab) doesn't lose the conversation.
+
+const STORAGE_KEY = "jeskers-assistant-chat";
+
+function loadStored() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    return {
+      messages: Array.isArray(data?.messages) ? data.messages : [],
+      sessionId: data?.sessionId ?? null,
+    };
+  } catch {
+    return { messages: [], sessionId: null };
+  }
+}
 
 const SUGGESTIONS = [
   "Rent a 7-seater with a child seat in Columbus from Wed to Sun, under $60/day",
@@ -27,12 +47,19 @@ function ToolTrail({ events }) {
 }
 
 export default function AssistantPage() {
-  const [messages, setMessages] = useState([]); // {role, text, events?}
+  const [{ messages, sessionId }, setChatState] = useState(loadStored);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const sessionRef = useRef(null);
   const scrollRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ messages, sessionId }));
+    } catch {
+      /* storage full/unavailable — chat still works, just not persisted */
+    }
+  }, [messages, sessionId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -43,12 +70,14 @@ export default function AssistantPage() {
     if (!message || busy) return;
     setInput("");
     setError(null);
-    setMessages((m) => [...m, { role: "user", text: message }]);
+    setChatState((s) => ({ ...s, messages: [...s.messages, { role: "user", text: message }] }));
     setBusy(true);
     try {
-      const res = await sendChat({ message, session_id: sessionRef.current });
-      sessionRef.current = res.session_id;
-      setMessages((m) => [...m, { role: "bot", text: res.reply, events: res.events }]);
+      const res = await sendChat({ message, session_id: sessionId });
+      setChatState((s) => ({
+        sessionId: res.session_id,
+        messages: [...s.messages, { role: "bot", text: res.reply, events: res.events }],
+      }));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -57,9 +86,9 @@ export default function AssistantPage() {
   }
 
   async function handleReset() {
-    if (sessionRef.current) await resetChat(sessionRef.current).catch(() => {});
-    sessionRef.current = null;
-    setMessages([]);
+    if (sessionId) await resetChat(sessionId).catch(() => {});
+    sessionStorage.removeItem(STORAGE_KEY);
+    setChatState({ messages: [], sessionId: null });
     setError(null);
   }
 
@@ -94,7 +123,13 @@ export default function AssistantPage() {
           {messages.map((m, i) => (
             <div key={i} className={`chat__msg chat__msg--${m.role}`}>
               {m.role === "bot" && <ToolTrail events={m.events} />}
-              <div className="chat__bubble">{m.text}</div>
+              {m.role === "bot" ? (
+                <div className="chat__bubble chat__bubble--md">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                </div>
+              ) : (
+                <div className="chat__bubble">{m.text}</div>
+              )}
             </div>
           ))}
           {busy && (

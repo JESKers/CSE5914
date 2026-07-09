@@ -25,12 +25,13 @@ from typing import Any, Callable
 
 from search import search_service, vpic
 
-from . import store, synth
+from . import images, store, synth
 from .config import settings
 from .schemas import SearchFilters
 
 MAX_AGENT_ITERATIONS = 12   # hard cap on model<->tool round trips per user turn
 MAX_RESULTS_TO_MODEL = 8    # keep tool payloads small so context stays lean
+MAX_RENTAL_UNITS = 10       # rental comparisons benefit from a few more options
 
 # Adaptive thinking is only accepted on Claude 4.6+ / Sonnet 5 / Fable models;
 # older ones (e.g. Haiku 4.5) reject the parameter with a 400, so gate it.
@@ -75,10 +76,24 @@ def _rental_days(pickup: str, dropoff: str) -> int:
 
 
 def _location(location_id: str) -> dict[str, Any]:
-    loc = next((l for l in synth.rental_locations() if l["id"] == location_id), None)
-    if not loc:
-        raise ValueError(f"Unknown rental location '{location_id}'")
+    """Resolve a branch id leniently (case-insensitive, city-name fallback)."""
+    locs = synth.rental_locations()
+    wanted = str(location_id or "").strip().upper()
+    loc = next((l for l in locs if l["id"].upper() == wanted), None)
+    if loc is None:  # tolerate a city name / guessed id; cheapest branch wins
+        by_city = [l for l in locs if l["city"].upper() in wanted or wanted in l["city"].upper()]
+        loc = min(by_city, key=lambda l: l["daily_rate_multiplier"]) if by_city else None
+    if loc is None:
+        valid = ", ".join(l["id"] for l in locs)
+        raise ValueError(f"Unknown rental location '{location_id}'. Valid ids: {valid}")
     return loc
+
+
+def _with_image(payload: dict[str, Any], make: Any, model: Any) -> dict[str, Any]:
+    url = images.image_for(make and str(make), model and str(model))
+    if url:
+        payload["image_url"] = url
+    return payload
 
 
 # --------------------------------------------------------------------------- #
@@ -89,7 +104,9 @@ def _t_search_cars(args: dict[str, Any]) -> tuple[Any, str]:
     args["size"] = min(int(args.get("size", MAX_RESULTS_TO_MODEL)), MAX_RESULTS_TO_MODEL)
     filters = SearchFilters(**args)
     res = search_service.search(filters)
-    payload = {"total": res["total"], "results": [_compact_car(c) for c in res["results"]]}
+    results = [_with_image(_compact_car(c), c.get("make"), c.get("model"))
+               for c in res["results"]]
+    payload = {"total": res["total"], "results": results}
     return payload, f"Searched catalog: {res['total']} matches"
 
 
@@ -101,6 +118,7 @@ def _t_get_listing(args: dict[str, Any]) -> tuple[Any, str]:
         verified = False
     sold = store.purchases_by_vehicle().get(str(args["vehicle_id"]), 0)
     listing = store.to_listing(car, verified=verified, sold=sold)
+    _with_image(listing, car.get("make"), car.get("model"))
     label = f"{car.get('year')} {car.get('make')} {car.get('model')}"
     return listing, f"Fetched listing for {label}"
 
@@ -133,8 +151,9 @@ def _t_search_rental_inventory(args: dict[str, Any]) -> tuple[Any, str]:
             continue
         matches.append({**u, "days": days, "base_total": round(u["daily_rate"] * days, 2)})
     matches.sort(key=lambda u: u["daily_rate"])
-    payload = {"location": loc, "days": days, "count": len(matches),
-               "units": matches[:MAX_RESULTS_TO_MODEL]}
+    top = [_with_image(dict(u), u.get("make"), u.get("model"))
+           for u in matches[:MAX_RENTAL_UNITS]]
+    payload = {"location": loc, "days": days, "count": len(matches), "units": top}
     return payload, f"Found {len(matches)} available cars at {loc['name']}"
 
 
@@ -145,9 +164,10 @@ def _t_get_rental_addons(_args: dict[str, Any]) -> tuple[Any, str]:
 
 def _t_quote_rental(args: dict[str, Any]) -> tuple[Any, str]:
     car = _get_car(args["vehicle_id"])
+    loc = _location(args["location_id"])
     days = _rental_days(args["pickup"], args["dropoff"])
     quote = synth.quote_rental(
-        car, args["location_id"], days=days,
+        car, loc["id"], days=days,
         addons=args.get("addons") or {}, protection=args.get("protection") or [],
         driver_age=int(args.get("driver_age") or 30),
     )
@@ -157,20 +177,24 @@ def _t_quote_rental(args: dict[str, Any]) -> tuple[Any, str]:
 
 def _t_book_rental(args: dict[str, Any]) -> tuple[Any, str]:
     car = _get_car(args["vehicle_id"])
+    loc = _location(args["location_id"])
     days = _rental_days(args["pickup"], args["dropoff"])
-    unit_id = f"{args['location_id']}-{car['id']}"
+    unit_id = f"{loc['id']}-{car['id']}"
     if not synth.is_available(unit_id, args["pickup"], args["dropoff"]):
         raise ValueError("That vehicle is no longer available for those dates")
     quote = synth.quote_rental(
-        car, args["location_id"], days=days,
+        car, loc["id"], days=days,
         addons=args.get("addons") or {}, protection=args.get("protection") or [],
         driver_age=int(args.get("driver_age") or 30),
     )
     booking = synth.book_rental(
-        car, args["location_id"], pickup=args["pickup"], dropoff=args["dropoff"],
+        car, loc["id"], pickup=args["pickup"], dropoff=args["dropoff"],
         days=days, total=quote["total"], addons=args.get("addons") or {},
         protection=args.get("protection") or [], customer=args.get("customer"),
     )
+    booking.update(synth.unit_identity(loc["id"], str(car["id"])))
+    booking["pickup_location"] = loc
+    _with_image(booking, car.get("make"), car.get("model"))
     return {**booking, "quote": quote}, f"Booked {booking['label']} — confirmation {booking['confirmation']}"
 
 
@@ -282,12 +306,12 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "list_rental_locations",
-        "description": "List rental branches (id, city, name, rate multiplier). Call first in any rental flow to resolve the pickup city to a location_id.",
+        "description": "List rental branches: exact `id` (use it verbatim in later calls), name, street address, phone, opening hours, rate multiplier. Call first in any rental flow to resolve the pickup city to a location_id.",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "search_rental_inventory",
-        "description": "Search available rental cars at one branch for a date range. Filters: minimum seats, max daily rate (USD), rental class (Economy/Standard/SUV/Truck/Luxury/Sport). Returns available units sorted by daily rate. Call this to find and compare rental options.",
+        "description": "Search available rental cars at one branch for a date range. Filters: minimum seats, max daily rate (USD), rental class (Economy/Standard/SUV/Truck/Luxury/Sport). Returns available units sorted by daily rate, each with license plate, color, odometer, seats, per-day rate, estimated base total and (when found) a photo image_url. Call this to find and compare rental options.",
         "input_schema": {"type": "object", "properties": {
             "location_id": _str("branch id from list_rental_locations"),
             "pickup": _str("pickup date YYYY-MM-DD"), "dropoff": _str("dropoff date YYYY-MM-DD"),
@@ -400,12 +424,15 @@ def _system_prompt() -> str:
 You handle two journeys:
 
 RENTAL — fully autonomous, end to end. When a user wants to rent (e.g. "a 7-seater with a child seat in Columbus next Wed to Sun, under $60/day"):
-1. Resolve relative dates against today's date. Resolve the city to a branch with list_rental_locations (prefer the cheaper non-airport branch unless they need the airport).
+1. Resolve relative dates against today's date. Resolve the city to a branch with list_rental_locations and use the branch's exact `id` in later calls (prefer the cheaper non-airport branch unless they need the airport).
 2. search_rental_inventory with their seat/budget/class constraints; compare the top options on price and fit.
 3. Add requested extras from get_rental_addons; recommend the sensible protection (CDW at minimum) and include it unless the user declined insurance.
 4. quote_rental to verify the all-in total respects their budget (their per-day budget refers to the base daily rate unless they say all-in).
-5. book_rental and present the confirmation number, pickup details and full price breakdown.
+5. book_rental and present the confirmation.
 Complete the whole chain in one go without asking for permission between steps. Only stop to ask if a hard requirement is impossible (e.g. nothing fits the budget) — then present the closest alternatives and ask which to book.
+Present the rental result like a real reservation, in two parts:
+- A short comparison table of the 2-4 best units you considered (plate, class, seats, color, $/day, est. total) with a one-line reason for your pick.
+- The confirmation: confirmation number, vehicle (year make model + plate + color + odometer), pickup/dropoff dates, branch name + street address + phone + hours, itemized costs (base, each add-on, protection, fees, tax, total). Include the car photo if image_url is available.
 
 BUY — decision support, then offline handoff. When a user is shopping to own:
 1. Understand needs, search_cars to shortlist 2-3 candidates, and get_listing for prices/stock.
@@ -413,7 +440,14 @@ BUY — decision support, then offline handoff. When a user is shopping to own:
 3. When they like a car, get_dealer_and_slots and offer to book_test_drive; after booking, hand off the dealer's name, phone and email so they can negotiate and close offline.
 4. Never place_purchase_order unless the user explicitly asks to buy now.
 
-Style: reply in the user's language (they may write Chinese — answer in Chinese then). Be concrete: show real numbers from tools, small comparison tables when comparing options, and always surface confirmation numbers. Keep replies compact. If a tool errors, say what failed and offer the nearest alternative."""
+Formatting: your replies render as GitHub-flavored markdown. Use compact GFM tables for any comparison (keep them to <=6 columns so they fit a chat panel), **bold** only for the few numbers that matter, and short paragraphs — no walls of text. When a tool result carries an image_url for the car you are recommending or booking, embed it with ![year make model](image_url); at most 2 images per reply.
+
+Honesty rules (hard requirements):
+- Never say a booking, order or appointment is confirmed unless a book_rental / book_test_drive / place_purchase_order tool call SUCCEEDED in this conversation. Confirmation numbers, plates, addresses and prices must be copied verbatim from tool results — never invent or round them.
+- If you only quoted but did not book, say so explicitly and either book it or ask.
+- If a tool errors, say what failed and offer the nearest alternative.
+
+Style: reply in the user's language (they may write Chinese — answer in Chinese then). Be concrete and keep replies compact."""
 
 
 # --------------------------------------------------------------------------- #

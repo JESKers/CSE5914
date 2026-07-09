@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app import agent, main, store
+from backend.app import agent, images, main, store, synth
 from backend.app.config import settings
 
 client = TestClient(main.app)
@@ -35,6 +35,9 @@ def isolate(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(agent.search_service, "get_car", lambda vid: dict(_SAMPLE_CAR))
     monkeypatch.setattr(agent.vpic, "is_verified", lambda make: True)
+    # keep image lookups offline: warm in-memory cache, cache file in tmp
+    monkeypatch.setattr(images, "CACHE_PATH", tmp_path / "vehicle_images.json")
+    monkeypatch.setattr(images, "_cache", {"bmw m4": "https://img.example/m4.jpg"})
     agent._SESSIONS.clear()
 
 
@@ -78,6 +81,41 @@ def test_rental_inventory_shape_and_date_validation():
 
     with pytest.raises(ValueError):
         agent._rental_days("2026-07-19", "2026-07-15")
+
+
+def test_unit_identity_is_deterministic_and_plate_shaped():
+    a = synth.unit_identity("CMH-DT", "1")
+    b = synth.unit_identity("CMH-DT", "1")
+    assert a == b  # same unit -> same plate/color/odometer every time
+    assert a["plate"].startswith("OH ") and "-" in a["plate"]
+    assert a["color"] in synth._UNIT_COLORS
+    assert 8000 <= a["odometer_miles"] < 60000
+    assert synth.unit_identity("CMH-AIR", "1")["plate"] != a["plate"]
+
+
+def test_location_resolution_is_lenient():
+    assert agent._location("cmh-dt")["id"] == "CMH-DT"          # case-insensitive
+    assert agent._location("columbus-downtown")["city"] == "Columbus"  # city fallback
+    with pytest.raises(ValueError, match="Valid ids"):
+        agent._location("mars-base")
+
+
+def test_listing_and_search_carry_image_url():
+    listing, _ = agent._t_get_listing({"vehicle_id": "1"})
+    assert listing["image_url"] == "https://img.example/m4.jpg"
+    payload, _ = agent._t_search_cars({"make": "BMW"})
+    assert payload["results"][0]["image_url"] == "https://img.example/m4.jpg"
+
+
+def test_image_cache_hit_needs_no_network(monkeypatch):
+    def _boom(*a, **k):
+        raise AssertionError("network should not be touched on cache hit")
+    monkeypatch.setattr(images.httpx, "get", _boom)
+    assert images.image_for("BMW", "M4") == "https://img.example/m4.jpg"
+    # transient network failure -> None, and the miss is NOT cached
+    monkeypatch.setattr(images.httpx, "get", lambda *a, **k: (_ for _ in ()).throw(OSError("down")))
+    assert images.image_for("Honda", "Pilot") is None
+    assert "honda pilot" not in images._cache
 
 
 def test_run_tool_surfaces_errors_instead_of_raising():

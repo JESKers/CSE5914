@@ -1,0 +1,17 @@
+{
+  "_note": "SYNTHETIC demo data. Dealer directory for buy handoff + test-drive scheduling. Fake contacts.",
+  "dealers": [
+    {"id": "D01", "name": "Ricart Auto Mall",        "city": "Columbus",  "state": "OH", "zip": "43125", "phone": "(614) 555-0142", "email": "sales@ricart.demo",       "rating": 4.5},
+    {"id": "D02", "name": "Germain Honda of Dublin",  "city": "Dublin",    "state": "OH", "zip": "43017", "phone": "(614) 555-0188", "email": "leads@germain.demo",      "rating": 4.6},
+    {"id": "D03", "name": "Byers Toyota",             "city": "Delaware",  "state": "OH", "zip": "43015", "phone": "(740) 555-0110", "email": "internet@byers.demo",     "rating": 4.4},
+    {"id": "D04", "name": "Midwestern BMW",           "city": "Columbus",  "state": "OH", "zip": "43229", "phone": "(614) 555-0173", "email": "concierge@mwbmw.demo",    "rating": 4.3},
+    {"id": "D05", "name": "Coughlin Chevrolet",       "city": "Newark",    "state": "OH", "zip": "43055", "phone": "(740) 555-0165", "email": "sales@coughlin.demo",     "rating": 4.2},
+    {"id": "D06", "name": "Mark Wahlberg Ford",       "city": "Columbus",  "state": "OH", "zip": "43232", "phone": "(614) 555-0121", "email": "fleet@mwford.demo",       "rating": 4.1}
+  ],
+  "test_drive": {
+    "_note": "Slot template; the module offers the next open slots deterministically per listing.",
+    "open_days": ["Mon","Tue","Wed","Thu","Fri","Sat"],
+    "slots_per_day": ["10:00", "11:30", "13:00", "14:30", "16:00", "17:30"],
+    "lead_time_days": 1
+  }
+}

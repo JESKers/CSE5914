@@ -1,0 +1,25 @@
+{
+  "_note": "SYNTHETIC demo data. Rental branches (addresses are plausible but fictional). Fleet is generated per-branch from the car catalog.",
+  "locations": [
+    {"id": "CMH-AIR", "city": "Columbus", "state": "OH", "name": "Columbus Airport (CMH)", "zip": "43219",
+     "address": "4600 International Gateway, Terminal Rental Center, Columbus, OH 43219",
+     "phone": "(614) 555-0210", "hours": "Mon–Sun 6:00–23:30",
+     "daily_rate_multiplier": 1.15, "fleet_size": 40},
+    {"id": "CMH-DT", "city": "Columbus", "state": "OH", "name": "Columbus Downtown", "zip": "43215",
+     "address": "355 E Spring St, Columbus, OH 43215",
+     "phone": "(614) 555-0234", "hours": "Mon–Sat 7:30–19:00, Sun 9:00–15:00",
+     "daily_rate_multiplier": 1.0, "fleet_size": 30},
+    {"id": "CMH-OSU", "city": "Columbus", "state": "OH", "name": "Columbus - OSU Campus", "zip": "43210",
+     "address": "1739 N High St, Columbus, OH 43210",
+     "phone": "(614) 555-0287", "hours": "Mon–Sat 8:00–18:00, Sun closed",
+     "daily_rate_multiplier": 0.95, "fleet_size": 22},
+    {"id": "CLE-AIR", "city": "Cleveland", "state": "OH", "name": "Cleveland Airport (CLE)", "zip": "44135",
+     "address": "5300 Riverside Dr, Rental Car Facility, Cleveland, OH 44135",
+     "phone": "(216) 555-0164", "hours": "Mon–Sun 6:00–23:00",
+     "daily_rate_multiplier": 1.1, "fleet_size": 28},
+    {"id": "CVG-AIR", "city": "Cincinnati", "state": "OH", "name": "Cincinnati Airport (CVG)", "zip": "45275",
+     "address": "3087 Terminal Dr, CONRAC Building, Hebron, KY 45275",
+     "phone": "(859) 555-0142", "hours": "Mon–Sun 6:00–23:00",
+     "daily_rate_multiplier": 1.1, "fleet_size": 28}
+  ]
+}
