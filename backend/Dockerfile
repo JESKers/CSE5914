@@ -11,9 +11,9 @@ COPY backend ./backend
 COPY search ./search
 COPY rag ./rag
 # Demo-specific: copy the presentation script into the backend container.
-COPY demo_rag_es.py /app/demo_rag_es.py
+COPY demo_rag.py /app/demo_rag.py
 
-RUN chmod +x /app/backend/docker-entrypoint.sh /app/demo_rag_es.py
+RUN chmod +x /app/backend/docker-entrypoint.sh /app/demo_rag.py
 
 EXPOSE 8000
 ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]

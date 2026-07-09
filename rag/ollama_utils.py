@@ -75,9 +75,30 @@ class LocalOllamaEmbeddings(Embeddings):
         return all_embeddings
 
 
+def _resolve_base_url() -> str:
+    env_base_url = os.getenv("OLLAMA_BASE_URL") or os.getenv("ollama_base_url")
+    inside_container = os.path.exists("/.dockerenv") or os.getenv("container") == "docker"
+
+    if env_base_url:
+        normalized = env_base_url.strip().rstrip("/")
+        if inside_container and normalized in {
+            "http://localhost:11434",
+            "http://127.0.0.1:11434",
+            "localhost:11434",
+            "127.0.0.1:11434",
+            "http://0.0.0.0:11434",
+        }:
+            return "http://ollama:11434"
+        return normalized
+
+    if inside_container:
+        return "http://ollama:11434"
+    return "http://localhost:11434"
+
+
 def get_ollama_config() -> dict:
     return {
-        "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        "base_url": _resolve_base_url(),
         "chat_model": os.getenv("OLLAMA_CHAT_MODEL", "llama3.2"),
         "embedding_model": os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text"),
     }

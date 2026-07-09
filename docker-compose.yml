@@ -26,6 +26,7 @@ services:
     env_file: .env
     environment:
       - ES_HOST=http://elasticsearch:9200
+      - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
       - ./data:/app/data        # drop data.csv / cars_clean.json here without rebuilding
     ports:

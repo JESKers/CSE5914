@@ -89,6 +89,20 @@ def format_docs(docs: List[dict]) -> str:
     return "\n\n".join(format_car(doc) for doc in docs)
 
 
+def build_fallback_answer(query: str, docs: List[dict], top_k: int = 5) -> str:
+    if not docs:
+        return (
+            f"I could not reach the local LLM service for '{query}', and no Elasticsearch matches were available."
+        )
+
+    preview = docs[:top_k]
+    summary = format_docs(preview)
+    return (
+        f"I could not reach the local LLM service for '{query}', so here are the top Elasticsearch matches instead:\n"
+        f"{summary}"
+    )
+
+
 def retrieve_es_documents(query: str, top_k: int = 5) -> dict:
     # This is the main retrieval step: turn the user question into a search request.
     filters = SearchFilters(q=query, page=1, size=top_k)
@@ -97,6 +111,8 @@ def retrieve_es_documents(query: str, top_k: int = 5) -> dict:
 
 def recommend(query: str, rebuild: bool = False, top_k: int = 5):
     """Answer a free-text question using Elasticsearch results as retrieval context."""
+    search_results = None
+
     # The first try uses the search index as context, which is the cleaner path for this demo.
     try:
         search_results = retrieve_es_documents(query, top_k=top_k)
@@ -109,15 +125,22 @@ def recommend(query: str, rebuild: bool = False, top_k: int = 5):
         response = llm.invoke(prompt)
         return response.content if hasattr(response, "content") else str(response)
     except Exception:
+        if search_results is not None and search_results.get("results"):
+            return build_fallback_answer(query, search_results["results"], top_k=top_k)
+
         if rebuild or not index_exists():
-            store = build_demo_index()
-            docs = store.similarity_search(query, k=top_k)
-            context = "\n\n".join(doc.page_content for doc in docs)
-            prompt = PROMPT_TEMPLATE.format(context=context, question=query)
-            llm = get_chat_model()
-            response = llm.invoke(prompt)
-            return response.content if hasattr(response, "content") else str(response)
-        raise
+            try:
+                store = build_demo_index()
+                docs = store.similarity_search(query, k=top_k)
+                context = "\n\n".join(doc.page_content for doc in docs)
+                prompt = PROMPT_TEMPLATE.format(context=context, question=query)
+                llm = get_chat_model()
+                response = llm.invoke(prompt)
+                return response.content if hasattr(response, "content") else str(response)
+            except Exception:
+                return build_fallback_answer(query, [], top_k=top_k)
+
+        return build_fallback_answer(query, [], top_k=top_k)
 
 
 if __name__ == "__main__":
