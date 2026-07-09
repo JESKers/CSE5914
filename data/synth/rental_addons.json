@@ -1,0 +1,23 @@
+{
+  "_note": "SYNTHETIC demo data. Rental add-ons and protection/insurance products. Not real products.",
+  "addons": [
+    {"code": "child_seat",        "label": "Child / Booster Seat",   "unit": "per_day", "price": 12.0, "max_qty": 4},
+    {"code": "additional_driver", "label": "Additional Driver",      "unit": "per_day", "price": 13.0, "max_qty": 3},
+    {"code": "gps",               "label": "GPS Navigation",         "unit": "per_day", "price": 8.0,  "max_qty": 1},
+    {"code": "toll_pass",         "label": "Prepaid Toll Pass",      "unit": "per_day", "price": 6.5,  "max_qty": 1},
+    {"code": "ski_rack",          "label": "Ski / Roof Rack",        "unit": "per_day", "price": 9.0,  "max_qty": 1},
+    {"code": "young_driver",      "label": "Under-25 Driver Fee",    "unit": "per_day", "price": 25.0, "max_qty": 1}
+  ],
+  "protection": [
+    {"code": "cdw", "label": "Collision Damage Waiver (CDW)",   "unit": "per_day", "price": 21.99, "recommended": true},
+    {"code": "ldw", "label": "Loss Damage Waiver (LDW)",        "unit": "per_day", "price": 29.99},
+    {"code": "sli", "label": "Supplemental Liability Insurance","unit": "per_day", "price": 14.5},
+    {"code": "pai", "label": "Personal Accident Insurance",     "unit": "per_day", "price": 7.0},
+    {"code": "rsa", "label": "Roadside Assistance",             "unit": "per_day", "price": 6.5, "recommended": true}
+  ],
+  "fees": {
+    "young_renter_age_threshold": 25,
+    "airport_concession_pct": 0.11,
+    "prepaid_fuel_flat": 65.0
+  }
+}
