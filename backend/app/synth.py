@@ -268,8 +268,29 @@ _RENTAL_CLASS = {"economy": "Economy", "midsize": "Standard", "suv": "SUV",
                  "truck": "Truck", "luxury": "Luxury", "performance": "Sport"}
 
 
+_UNIT_COLORS = ("Black", "White", "Silver", "Gray", "Midnight Blue", "Ruby Red",
+                "Forest Green", "Champagne", "Graphite")
+
+
 def rental_locations() -> list[dict[str, Any]]:
     return _table("rental_locations")["locations"]
+
+
+def unit_identity(location_id: str, vehicle_id: str) -> dict[str, Any]:
+    """Deterministic per-unit identity: license plate, color, odometer.
+
+    Fabricated but stable — the same unit always shows the same plate, so a
+    car quoted in one turn is recognizably the car booked in the next.
+    """
+    h = _stable_hash("unit", location_id, vehicle_id)
+    letters = "".join(chr(ord("A") + (h >> (5 * i)) % 26) for i in range(3))
+    digits = 1000 + _stable_hash("plate", location_id, vehicle_id) % 9000
+    state = next((l["state"] for l in rental_locations() if l["id"] == location_id), "OH")
+    return {
+        "plate": f"{state} {letters}-{digits}",
+        "color": _UNIT_COLORS[h % len(_UNIT_COLORS)],
+        "odometer_miles": 8000 + _stable_hash("odo", location_id, vehicle_id) % 52000,
+    }
 
 
 def daily_rate(car: dict[str, Any], location_id: str) -> float:
@@ -300,10 +321,12 @@ def build_rental_inventory(cars: list[dict[str, Any]], location_id: str) -> list
                 "unit_id": f"{location_id}-{vid}",
                 "vehicle_id": vid,
                 "label": f"{car.get('year','')} {car.get('make','')} {car.get('model','')}".strip(),
+                "make": car.get("make"), "model": car.get("model"), "year": car.get("year"),
                 "rental_class": _RENTAL_CLASS.get(seg, "Standard"),
                 "seats": estimate_seats(car.get("vehicle_style")),
                 "daily_rate": daily_rate(car, location_id),
                 "units_available": 1 + _stable_hash("avail", location_id, vid) % 5,
+                **unit_identity(location_id, vid),
             })
         if len(units) >= fleet_cap:
             break
