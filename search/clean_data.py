@@ -16,6 +16,7 @@ Usage (run from the repo root):
 """
 import argparse
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -57,6 +58,29 @@ def _impute_by_make(df: pd.DataFrame, col: str) -> pd.DataFrame:
     return df
 
 
+def _infer_make_model_from_url(row: pd.Series) -> pd.Series:
+    """Infer missing make/model values from common Craigslist URL patterns."""
+    if pd.isna(row.get("make")) or pd.isna(row.get("model")):
+        url = str(row.get("url", "") or "")
+        if url:
+            parts = url.rstrip("/").split("/")
+            if len(parts) >= 2:
+                candidate = parts[-2]
+                segments = candidate.split("-")
+                # Remove empty pieces and year token
+                segments = [seg for seg in segments if seg]
+                if segments and re.match(r"^\d{4}$", segments[0]):
+                    segments = segments[1:]
+                if len(segments) >= 2:
+                    make_candidate = segments[0].title()
+                    model_candidate = " ".join(seg.title() for seg in segments[1:])
+                    if pd.isna(row.get("make")) and make_candidate:
+                        row["make"] = make_candidate
+                    if pd.isna(row.get("model")) and model_candidate:
+                        row["model"] = model_candidate
+    return row
+
+
 def clean(input_path: Path) -> pd.DataFrame:
     df = pd.read_csv(input_path)
 
@@ -76,6 +100,17 @@ def clean(input_path: Path) -> pd.DataFrame:
         df["make"] = df["manufacturer"] if "manufacturer" in df.columns else pd.NA
     if "model" not in df.columns:
         df["model"] = df["model"] if "model" in df.columns else pd.NA
+
+    # Normalize blank strings to NA so URL-based inference can fill missing
+    # make/model values correctly.
+    if "make" in df.columns:
+        df["make"] = df["make"].replace({"": pd.NA})
+    if "model" in df.columns:
+        df["model"] = df["model"].replace({"": pd.NA})
+
+    # Infer make/model from the URL when the raw CSV fields are empty.
+    if "url" in df.columns:
+        df = df.apply(_infer_make_model_from_url, axis=1)
 
     # Fill in missing values for the common vehicle fields used by the demo.
     for col in ["engine_fuel_type", "transmission_type", "vehicle_style", "vehicle_size"]:

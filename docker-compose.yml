@@ -46,6 +46,13 @@ services:
       OLLAMA_HOST: 0.0.0.0:11434
     volumes:
       - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   ollama-pull:
     image: ollama/ollama:latest

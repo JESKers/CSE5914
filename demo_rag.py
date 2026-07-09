@@ -18,9 +18,7 @@ from search.ingest import main as ingest_main
 from backend.app.config import settings
 from backend.app.es_client import get_es
 from search import search_service
-from backend.app.schemas import SearchFilters
-from rag.recommend import recommend
-
+from rag.recommend import recommend, retrieve_es_documents
 
 def build_fallback_answer(query: str, search_results: dict) -> str:
     results = search_results.get("results", [])[:3]
@@ -51,8 +49,11 @@ def build_fallback_answer(query: str, search_results: dict) -> str:
     return f"For '{query}', a practical starting point is:\n" + "\n".join(lines)
 
 
-def ensure_data_ready():
+def ensure_data_ready(force: bool = False):
     # Demo-specific: prepare the dataset and Elasticsearch index before running the demo.
+    # Cleaning + ingesting the full ~427k-row CSV takes several minutes, so by
+    # default this is skipped once the cleaned file and ES index already exist.
+    # Pass force=True (or set REBUILD_INDEX=true) to force a full rebuild.
     data_dir = ROOT / "data"
     data_dir.mkdir(exist_ok=True)
 
@@ -62,13 +63,26 @@ def ensure_data_ready():
         sys.exit(1)
 
     cleaned_path = data_dir / "cars_clean.json"
-    print("Cleaning CSV into NDJSON...")
-    df = clean(csv_path)
-    to_ndjson(df, cleaned_path)
+    needs_clean = force or not cleaned_path.exists() or (
+        csv_path.stat().st_mtime > cleaned_path.stat().st_mtime
+    )
+
+    if needs_clean:
+        print("Cleaning CSV into NDJSON...")
+        df = clean(csv_path)
+        to_ndjson(df, cleaned_path)
+    else:
+        print(f"Found up-to-date {cleaned_path}. Skipping clean_data.")
 
     try:
         es = get_es()
-        if es.indices.exists(index=settings.es_index):
+        index_exists = es.indices.exists(index=settings.es_index)
+
+        if index_exists and not needs_clean and not force:
+            print(f"Index '{settings.es_index}' already exists. Skipping ingest.")
+            return
+
+        if index_exists:
             print(f"Deleting existing index '{settings.es_index}'...")
             es.indices.delete(index=settings.es_index)
 
@@ -80,24 +94,32 @@ def ensure_data_ready():
 
 def main():
     # Demo-specific: run a few example queries to show the end-to-end RAG flow.
-    # ensure_data_ready()
+    force_rebuild = os.getenv("REBUILD_INDEX", "false").lower() == "true"
+    ensure_data_ready(force=force_rebuild)
 
     queries = [
         "Which affordable cars are good for fuel efficiency and daily commuting?",
         "Which luxury SUVs have strong horsepower and a premium feel?",
         "What sporty coupes offer a good balance of price and performance?",
+        "What is some features of the 2017 dodge challenger?",
     ]
 
     print("\nRAG + Elasticsearch demo\n")
     for q in queries:
         print(f"Query: {q}")
         print("-" * 60)
-        filters = SearchFilters(q=q, page=1, size=3)
         try:
-            search_results = search_service.search(filters)
+            search_results = retrieve_es_documents(q, top_k=3)
             print(f"Elasticsearch matches: {search_results['total']}")
             for result in search_results['results'][:3]:
-                print(f"  - {result.get('year')} {result.get('make')} {result.get('model')} | MSRP ${result.get('msrp')}")
+                print(
+                    f"  - {result.get('year')} "
+                    f"{result.get('make')} "
+                    f"{result.get('model')} "
+                    f"| Body {result.get('vehicle_style')} "
+                    f"| HP {result.get('engine_hp')} "
+                    f"| MSRP ${result.get('msrp')}"
+                )
         except Exception as exc:
             search_results = {"results": []}
             print(f"Elasticsearch search unavailable: {exc}")
@@ -109,8 +131,6 @@ def main():
         except Exception as exc:
             print(build_fallback_answer(q, search_results))
             print(f"RAG response could not be generated: {exc}")
-        print()
-
 
 if __name__ == "__main__":
     main()
