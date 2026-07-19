@@ -1,5 +1,31 @@
 # Python
 __pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+
+# Local vector DB / generated files
+milvus_demo.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Data
+data.csv
+data_small.csv
+data/
+!data/sample_data.csv
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Docker
+/volumes
 *.py[cod]
 .venv/
 venv/

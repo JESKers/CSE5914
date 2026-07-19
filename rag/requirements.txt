@@ -1,11 +1,8 @@
 # RAG / LLM spike (Owner: Jerry) — Timebox 3 prep
-anthropic>=0.40.0
 python-dotenv>=1.0.0
 
-# LangChain + local embeddings + FAISS vector store
+# LangChain + local Ollama + FAISS vector store
 langchain>=0.2.0
-langchain-anthropic>=0.1.15
 langchain-community>=0.2.0
-langchain-huggingface>=0.0.3
-sentence-transformers>=2.7.0
+langchain-ollama>=0.1.0
 faiss-cpu>=1.8.0

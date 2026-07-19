@@ -9,7 +9,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # source packages (data/ is mounted as a volume at runtime)
 COPY backend ./backend
 COPY search ./search
-COPY rag/__init__.py rag/parser.py ./rag/
+COPY rag ./rag
+# Demo-specific: copy the presentation script into the backend container.
+COPY demo_rag.py /app/demo_rag.py
+
+RUN chmod +x /app/backend/docker-entrypoint.sh /app/demo_rag.py
 
 EXPOSE 8000
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/backend/docker-entrypoint.sh"]

@@ -11,7 +11,12 @@ class Settings(BaseSettings):
     es_user: str = ""
     es_password: str = ""
 
-    # LLM (Jerry's NL spike / Timebox 3)
+    # Local Ollama settings for Timebox 3 RAG / LLM
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_chat_model: str = "llama3.2"
+    ollama_embed_model: str = "nomic-embed-text"
+
+    # Legacy Anthropic support (optional)
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-4-8"
 

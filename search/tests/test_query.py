@@ -93,6 +93,12 @@ def test_sort_unknown_key_falls_back_to_popularity():
     assert sort[0] == {"popularity": {"order": "desc"}}
 
 
+def test_keyword_search_uses_relevance_by_default():
+    sort = _build_sort(SearchFilters(q="luxury coupe"))
+    assert sort[0] == {"_score": {"order": "desc"}}
+    assert sort[1] == {"id": "asc"}
+
+
 def test_sort_invalid_order_defaults_to_desc():
     sort = _build_sort(SearchFilters(sort="hp", order="sideways"))
     assert sort[0] == {"engine_hp": {"order": "desc"}}

@@ -1,17 +1,6 @@
-"""Build a FAISS vector store over the car dataset for semantic recommendation.
+"""Build a FAISS vector store over the car dataset using local Ollama embeddings.
 
-Owner: Jerry (RAG/LLM). Timebox 3 prep.
-
-Embeddings: local sentence-transformers model (all-MiniLM-L6-v2). The Anthropic
-API has no embedding endpoint, so semantic vectors come from an open-source model
-— no extra API key, runs offline. (For Timebox 3 we can compare this against
-Voyage AI embeddings or Elasticsearch dense_vector.)
-
-Usage (run from rag/):
-    python build_index.py            # build rag/faiss_index from the car data
-    python build_index.py "fast sports car under $50,000"   # build + demo query
-
-Input: backend/data/cars_clean.json (Kangjie's NDJSON). Falls back to data.csv.
+This keeps the rag package fully local and avoids any API key requirement.
 """
 import json
 import sys
@@ -19,12 +8,15 @@ from pathlib import Path
 
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
+
+try:
+    from .ollama_utils import get_embeddings
+except ImportError:  # pragma: no cover - allows direct script execution
+    from ollama_utils import get_embeddings
 
 ROOT = Path(__file__).resolve().parent.parent
 NDJSON = ROOT / "data" / "cars_clean.json"
 INDEX_DIR = Path(__file__).resolve().parent / "faiss_index"
-EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 def _doc_text(car: dict) -> str:
@@ -58,8 +50,7 @@ def build():
         Document(page_content=_doc_text(c), metadata={"id": str(i), **c})
         for i, c in enumerate(cars)
     ]
-    print(f"Embedding {len(docs)} cars with {EMBED_MODEL} ...")
-    embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+    embeddings = get_embeddings()
     store = FAISS.from_documents(docs, embeddings)
     store.save_local(str(INDEX_DIR))
     print(f"Saved FAISS index -> {INDEX_DIR}")
@@ -67,7 +58,7 @@ def build():
 
 
 def load_store():
-    embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+    embeddings = get_embeddings()
     return FAISS.load_local(str(INDEX_DIR), embeddings, allow_dangerous_deserialization=True)
 
 

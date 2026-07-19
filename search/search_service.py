@@ -31,7 +31,7 @@ def _build_query(f) -> dict:
     if f.q:
         must.append({"multi_match": {
             "query": f.q,
-            "fields": ["text", "make^2", "model^2"],
+            "fields": ["text", "make^2", "model^2", "description^1.5", "url^0.5"],
             "fuzziness": "AUTO",
         }})
 
@@ -63,8 +63,16 @@ def _build_query(f) -> dict:
 
 
 def _build_sort(f) -> list[dict]:
-    """ES sort clause. Unknown sort keys fall back to popularity; the trailing
-    `_id` tie-breaker keeps pagination deterministic when the primary field ties."""
+    """ES sort clause.
+
+    For free-text keyword searches, prioritize relevance instead of the default
+    popularity ranking so retrieval returns the most relevant matches.
+    Unknown sort keys still fall back to popularity; the trailing `_id`
+    tie-breaker keeps pagination deterministic when the primary field ties.
+    """
+    if f.q and (f.sort is None or f.sort == "popularity"):
+        return [{"_score": {"order": "desc"}}, {"id": "asc"}]
+
     sort_field = SORT_FIELDS.get(f.sort, "popularity")
     order = "asc" if f.order == "asc" else "desc"
     return [{sort_field: {"order": order}}, {"id": "asc"}]

@@ -34,8 +34,9 @@ from the **repo root** (`uvicorn backend.app.main:app`, `python -m search.ingest
 ## Quick start
 
 Prereqs: Docker (Desktop or colima), Node 18+, a Kaggle account (dataset download),
-and an Anthropic API key per person for the AI Assistant (console.anthropic.com —
-the account needs API credit; Claude app subscriptions don't cover API calls).
+Ollama with `llama3.2` and `nomic-embed-text`, and an Anthropic API key per person
+for the AI Assistant (console.anthropic.com — the account needs API credit;
+Claude app subscriptions don't cover API calls).
 
 ```bash
 # 1. Env — fill in your own ANTHROPIC_API_KEY (required for /assistant + /recommend)
@@ -78,6 +79,10 @@ Smoke test: http://localhost:8000/health should report `"elasticsearch": true`,
 - **ES container unhealthy / exits** → give Docker ≥ 4 GB memory.
 - Runtime artifacts (`data/store.db` order ledger, `data/vehicle_images.json`
   photo cache) create themselves on first use — never commit them or `.env`.
+
+The compose stack starts Ollama at http://localhost:11434. On a host-managed
+Ollama installation, pull the required models with `ollama pull llama3.2` and
+`ollama pull nomic-embed-text` before using `POST /api/recommend`.
 
 ## Local dev — backend only
 
