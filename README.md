@@ -96,6 +96,19 @@ pytest                                        # query-builder unit tests (no ES 
 Owner-specific extras: `pip install -r search/requirements.txt` (Jupyter profiling),
 `pip install -r rag/requirements.txt` (embeddings / FAISS).
 
+## Recommendation evaluation
+
+The labeled benchmark contains 124 natural-language requests covering prices,
+years, horsepower, makes/models, powertrains, combined constraints, vague
+preferences, misspellings, negation, contradictions, and adversarial input.
+
+```bash
+python evaluation/run_evaluation.py
+python evaluation/run_evaluation.py --api-url http://localhost:8000
+```
+
+See [evaluation/README.md](evaluation/README.md) for metrics and report details.
+
 ## Branch strategy
 
 - `main` — always runnable; protected. No direct pushes.

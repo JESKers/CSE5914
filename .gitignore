@@ -30,6 +30,7 @@ data/
 .venv/
 venv/
 .pytest_cache/
+evaluation/results/
 
 # Env / secrets
 .env
