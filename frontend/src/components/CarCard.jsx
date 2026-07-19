@@ -67,6 +67,17 @@ export default function CarCard({ car }) {
             <span className="tag">{car.engine_fuel_type}</span>
           </div>
         )}
+
+        {car.match_reasons?.length > 0 && (
+          <div className="card__reasons">
+            <p className="mono">WHY THIS MATCHES</p>
+            <ul>
+              {car.match_reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </article>
   );

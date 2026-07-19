@@ -73,14 +73,25 @@ class ModelsResponse(BaseModel):
 
 
 class RecommendRequest(BaseModel):
-    query: str = Field(description="free-text request, e.g. 'fast sports car under $50,000'")
+    query: str = Field(
+        min_length=1,
+        max_length=500,
+        pattern=r".*\S.*",
+        description="free-text request, e.g. 'fast sports car under $50,000'",
+    )
+
+
+class RecommendationResult(CarResult):
+    """A retrieved car plus facts explaining why it matched the request."""
+    match_reasons: list[str] = Field(default_factory=list)
 
 
 class RecommendResponse(BaseModel):
-    """Same envelope as /search; query_echo carries the parsed filters."""
-    results: list[CarResult]
+    """Grounded recommendations; every result comes from Elasticsearch."""
+    results: list[RecommendationResult]
     total: int
     query_echo: dict
+    message: str
 
 
 # --------------------------------------------------------------------------- #

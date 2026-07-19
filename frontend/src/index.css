@@ -712,6 +712,26 @@ textarea {
   padding: 3px 9px;
   border-radius: 100px;
 }
+.card__reasons {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.card__reasons p {
+  margin-bottom: 6px;
+  color: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.card__reasons ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.card__reasons li + li {
+  margin-top: 4px;
+}
 
 /* ---- skeleton / empty --------------------------------------------------- */
 .skel {

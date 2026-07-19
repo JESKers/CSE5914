@@ -105,14 +105,29 @@ Body:
 { "query": "fast sports car under $50,000" }
 ```
 
-The LLM parser (Jerry) turns the query into structured filters, then runs the
-same search. Returns the envelope; `query_echo` carries the original query and
-the parsed filters:
+The deterministic parser turns the query into structured filters, then runs the
+same Elasticsearch search. Hard constraints are verified again before a car is
+returned. `query_echo` carries the original query and parsed filters, while each
+result includes evidence-based `match_reasons`:
 
 ```json
 {
-  "results": [ /* Car objects */ ],
-  "total": 37,
+  "results": [
+    {
+      "id": "42",
+      "make": "Ford",
+      "model": "Mustang",
+      "year": 2018,
+      "msrp": 42000,
+      "engine_hp": 460,
+      "match_reasons": [
+        "MSRP $42,000 is within the $50,000 limit",
+        "460 hp meets the 300 hp minimum"
+      ]
+    }
+  ],
+  "total": 5,
+  "message": "Found 5 vehicles that satisfy the extracted hard constraints.",
   "query_echo": {
     "query": "fast sports car under $50,000",
     "parsed_filters": { "price_max": 50000, "hp_min": 300, "q": "sports coupe", "sort": "hp", "order": "desc" }
@@ -120,8 +135,8 @@ the parsed filters:
 }
 ```
 
-Returns `503` if `ANTHROPIC_API_KEY` is not configured. Experimental in Timebox 2;
-the primary recommendation deliverable in Timebox 3.
+The endpoint does not require an LLM to enforce constraints. Generated narrative
+can be layered on later, but stored Elasticsearch facts remain authoritative.
 
 ---
 

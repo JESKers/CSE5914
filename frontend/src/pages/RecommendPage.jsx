@@ -42,6 +42,7 @@ export default function RecommendPage() {
 
       {data && (
         <div style={{ marginTop: 32 }}>
+          <p>{data.message}</p>
           <ResultsGrid
             results={data.results}
             total={data.total}

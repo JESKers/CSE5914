@@ -65,6 +65,21 @@ def _extract_years(query: str):
     return year_min, year_max
 
 
+def _extract_hp_min(query: str):
+    """Extract hard lower bounds such as 'at least 300 hp' or '300+ horsepower'."""
+    q = query.lower()
+    patterns = [
+        r"(?:at least|minimum|min\.?)\s*([0-9]{2,4})\s*(?:hp|horsepower)",
+        r"([0-9]{2,4})\s*\+\s*(?:hp|horsepower)",
+        r"(?:over|more than)\s*([0-9]{2,4})\s*(?:hp|horsepower)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, q)
+        if match:
+            return int(match.group(1))
+    return None
+
+
 # Ordered so the first matching style wins when a query mentions more than one
 # (mirrors how a human would prioritize the most specific body-style word).
 BODY_STYLES = ["coupe", "suv", "sedan", "truck", "convertible", "wagon"]
@@ -200,6 +215,10 @@ def parse_query(query: str) -> SearchFilters:
         filters["year_min"] = year_min
     if year_max:
         filters["year_max"] = year_max
+
+    hp_min = _extract_hp_min(query)
+    if hp_min:
+        filters["hp_min"] = hp_min
 
     # Body/style intent
     for style in intents["body_styles"]:

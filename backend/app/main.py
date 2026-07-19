@@ -39,6 +39,7 @@ from .schemas import (
     OrdersResponse,
     RecommendRequest,
     RecommendResponse,
+    RecommendationResult,
     SearchFilters,
     SearchResponse,
     VpicDecodeResponse,
@@ -127,16 +128,81 @@ def models(make: str = Query(..., min_length=1, description="make to list models
 
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend(req: RecommendRequest):
-    """Free-text natural-language recommendation (RAG/LLM spike, Timebox 3 prep)."""
+    """Return Elasticsearch-grounded recommendations with verifiable reasons."""
     from rag.parser import parse_query  # lazy import: only /recommend needs the local parser
 
     filters = parse_query(req.query)
     res = search_service.search(filters)
-    return RecommendResponse(
-        results=_to_results(res["results"]),
-        total=res["total"],
-        query_echo={"query": req.query, "parsed_filters": filters.model_dump(exclude_none=True)},
+    grounded = []
+    for row in res["results"]:
+        if not _satisfies_hard_constraints(row, filters):
+            continue
+        grounded.append(RecommendationResult(
+            **row,
+            match_reasons=_recommendation_reasons(row, filters),
+        ))
+
+    message = (
+        f"Found {len(grounded)} vehicles that satisfy the extracted hard constraints."
+        if grounded
+        else "No vehicles satisfy all extracted hard constraints. Try broadening the request."
     )
+    return RecommendResponse(
+        results=grounded,
+        total=len(grounded),
+        query_echo={"query": req.query, "parsed_filters": filters.model_dump(exclude_none=True)},
+        message=message,
+    )
+
+
+def _satisfies_hard_constraints(car: dict, filters: SearchFilters) -> bool:
+    """Defensive check: never present a row that violates an extracted constraint."""
+    checks = (
+        (filters.make, car.get("make"), lambda actual, wanted: str(actual).lower() == str(wanted).lower()),
+        (filters.model, car.get("model"), lambda actual, wanted: str(actual).lower() == str(wanted).lower()),
+        (filters.year_min, car.get("year"), lambda actual, wanted: actual >= wanted),
+        (filters.year_max, car.get("year"), lambda actual, wanted: actual <= wanted),
+        (filters.price_min, car.get("msrp"), lambda actual, wanted: actual >= wanted),
+        (filters.price_max, car.get("msrp"), lambda actual, wanted: actual <= wanted),
+        (filters.hp_min, car.get("engine_hp"), lambda actual, wanted: actual >= wanted),
+        (filters.hp_max, car.get("engine_hp"), lambda actual, wanted: actual <= wanted),
+        (
+            filters.transmission_type,
+            car.get("transmission_type"),
+            lambda actual, wanted: str(actual).lower() == str(wanted).lower(),
+        ),
+        (
+            filters.engine_fuel_type,
+            car.get("engine_fuel_type"),
+            lambda actual, wanted: str(wanted).lower() in str(actual).lower(),
+        ),
+    )
+    for wanted, actual, predicate in checks:
+        if wanted is not None and (actual is None or not predicate(actual, wanted)):
+            return False
+    return True
+
+
+def _recommendation_reasons(car: dict, filters: SearchFilters) -> list[str]:
+    """Build explanations only from stored vehicle facts and applied filters."""
+    reasons = []
+    if filters.make:
+        reasons.append(f"Matches requested make: {car['make']}")
+    if filters.model:
+        reasons.append(f"Matches requested model: {car['model']}")
+    if filters.price_max is not None and car.get("msrp") is not None:
+        reasons.append(f"MSRP ${car['msrp']:,.0f} is within the ${filters.price_max:,.0f} limit")
+    if filters.year_min is not None and car.get("year") is not None:
+        reasons.append(f"Model year {car['year']} is {filters.year_min} or newer")
+    if filters.hp_min is not None and car.get("engine_hp") is not None:
+        reasons.append(f"{car['engine_hp']} hp meets the {filters.hp_min} hp minimum")
+    if filters.transmission_type and car.get("transmission_type"):
+        reasons.append(f"Has the requested {car['transmission_type'].lower()} transmission")
+    if filters.engine_fuel_type and car.get("engine_fuel_type"):
+        reasons.append(f"Fuel type: {car['engine_fuel_type']}")
+    if filters.q and car.get("vehicle_style"):
+        reasons.append(f"Retrieved for preference match; body style is {car['vehicle_style']}")
+    return reasons or ["Retrieved from the vehicle catalog for this request"]
 
 
 # =========================================================================== #
