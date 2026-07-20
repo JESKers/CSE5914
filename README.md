@@ -68,6 +68,13 @@ Smoke test: http://localhost:8000/health should report `"elasticsearch": true`,
 (http://localhost:5173/assistant) should complete a rental end-to-end
 (try: "Rent an SUV in Columbus this weekend, under $70/day").
 
+Recommendation requests use a grounded RAG pipeline: natural-language filters
+retrieve candidates from Elasticsearch, the highest-ranked make/model/year
+combinations are checked against NHTSA vPIC, and LangChain supplies that evidence
+to local Ollama for a cited summary. Hard constraints are enforced in code; if
+vPIC or Ollama is unavailable, Elasticsearch results still return with explicit
+verification and generation status.
+
 ### Gotchas
 
 - **Backend code changes need an image rebuild** — the source is baked in:

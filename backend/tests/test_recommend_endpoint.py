@@ -2,6 +2,7 @@
 from fastapi.testclient import TestClient
 
 from backend.app import main
+from rag import grounded_recommend
 
 
 client = TestClient(main.app)
@@ -14,7 +15,22 @@ _MATCH = {
 }
 
 
+class _FakeChatModel:
+    def invoke(self, prompt):
+        assert "[car:match]" in prompt
+        return type("Response", (), {"content": "The Mustang meets the request [car:match]."})()
+
+
+def _stub_grounding(monkeypatch):
+    monkeypatch.setattr(grounded_recommend, "get_chat_model", lambda temperature=0: _FakeChatModel())
+    monkeypatch.setattr(grounded_recommend.vpic, "model_evidence", lambda make, model, year: {
+        "status": "verified", "verified": True, "model_id": 123,
+        "vehicle_type": "PASSENGER CAR",
+    })
+
+
 def test_recommend_returns_grounded_reasons(monkeypatch):
+    _stub_grounding(monkeypatch)
     captured = {}
     monkeypatch.setattr(main.search_service, "models", lambda make: ["Mustang"])
 
@@ -32,6 +48,9 @@ def test_recommend_returns_grounded_reasons(monkeypatch):
     body = response.json()
     assert body["total"] == 1
     assert body["results"][0]["id"] == "match"
+    assert body["results"][0]["vpic_evidence"]["status"] == "verified"
+    assert body["generation_mode"] == "langchain-ollama"
+    assert body["narrative"].endswith("[car:match].")
     assert any("300 hp minimum" in reason for reason in body["results"][0]["match_reasons"])
     assert captured["filters"].hp_min == 300
     assert captured["filters"].price_max == 50000
@@ -39,6 +58,7 @@ def test_recommend_returns_grounded_reasons(monkeypatch):
 
 
 def test_recommend_drops_row_that_violates_hard_constraint(monkeypatch):
+    _stub_grounding(monkeypatch)
     invalid = {**_MATCH, "id": "invalid", "msrp": 70000.0}
     monkeypatch.setattr(main.search_service, "models", lambda make: ["Mustang"])
     monkeypatch.setattr(

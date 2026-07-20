@@ -130,6 +130,7 @@ def models(make: str = Query(..., min_length=1, description="make to list models
 def recommend(req: RecommendRequest):
     """Return Elasticsearch-grounded recommendations with verifiable reasons."""
     from rag.parser import parse_query  # lazy import: only /recommend needs the local parser
+    from rag.grounded_recommend import enrich_with_vpic, generate_grounded_summary
 
     filters = parse_query(req.query)
     res = search_service.search(filters)
@@ -142,6 +143,11 @@ def recommend(req: RecommendRequest):
             match_reasons=_recommendation_reasons(row, filters),
         ))
 
+    enriched = enrich_with_vpic([item.model_dump() for item in grounded])
+    grounded = [RecommendationResult(**item) for item in enriched]
+    narrative, generation_mode = generate_grounded_summary(
+        req.query, [item.model_dump() for item in grounded]
+    )
     message = (
         f"Found {len(grounded)} vehicles that satisfy the extracted hard constraints."
         if grounded
@@ -152,6 +158,9 @@ def recommend(req: RecommendRequest):
         total=len(grounded),
         query_echo={"query": req.query, "parsed_filters": filters.model_dump(exclude_none=True)},
         message=message,
+        narrative=narrative,
+        generation_mode=generation_mode,
+        sources=["Elasticsearch vehicle catalog", "NHTSA vPIC"],
     )
 
 

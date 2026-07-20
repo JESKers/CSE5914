@@ -95,6 +95,16 @@ curl "http://localhost:8000/vpic/decode/1HGCM82633A004352"
 
 Live model list for a make (optionally a model year) from vPIC.
 
+## Recommendation enrichment
+
+`POST /recommend` checks the highest-ranked Elasticsearch results with vPIC's
+make/model/year endpoint. The per-result `vpic_evidence` object distinguishes
+`verified`, `not_found`, `not_supported`, `unavailable`, and `not_checked` so
+missing NHTSA data is never presented as a definitive negative. Lookups are
+cached and capped by `VPIC_RECOMMEND_LOOKUPS` (default 3). LangChain then builds
+an evidence-only prompt for local Ollama; generated vehicle claims cite the
+Elasticsearch IDs as `[car:ID]`.
+
 ---
 
 **Run:** these endpoints need the `cars` index seeded (see the main README:

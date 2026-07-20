@@ -147,10 +147,15 @@ def evaluate_api(cases: list[dict], api_url: str) -> tuple[dict, list[dict]]:
             for car in body.get("results", [])
         ]
         violations = [item for item in violations if item["fields"]]
+        vpic_statuses = Counter(
+            car.get("vpic_evidence", {}).get("status", "missing")
+            for car in body.get("results", [])
+        )
         rows.append({
             "id": case["id"], "status": status, "result_count": len(body.get("results", [])),
             "constraint_violations": violations, "latency_ms": round(latency_ms, 3),
-            "error": error,
+            "vpic_statuses": dict(vpic_statuses),
+            "generation_mode": body.get("generation_mode"), "error": error,
         })
 
     successful = [row for row in rows if row["status"] == 200]
@@ -159,6 +164,8 @@ def evaluate_api(cases: list[dict], api_url: str) -> tuple[dict, list[dict]]:
         "constraint_violations": sum(len(row["constraint_violations"]) for row in rows),
         "empty_result_rate": round(sum(row["result_count"] == 0 for row in successful) / len(successful), 4) if successful else None,
         "mean_latency_ms": round(mean(row["latency_ms"] for row in successful), 3) if successful else None,
+        "generation_modes": dict(Counter(row["generation_mode"] for row in successful)),
+        "vpic_statuses": dict(sum((Counter(row["vpic_statuses"]) for row in successful), Counter())),
     }
     return metrics, rows
 

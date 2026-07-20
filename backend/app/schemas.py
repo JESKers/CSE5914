@@ -84,6 +84,7 @@ class RecommendRequest(BaseModel):
 class RecommendationResult(CarResult):
     """A retrieved car plus facts explaining why it matched the request."""
     match_reasons: list[str] = Field(default_factory=list)
+    vpic_evidence: dict = Field(default_factory=dict)
 
 
 class RecommendResponse(BaseModel):
@@ -92,6 +93,9 @@ class RecommendResponse(BaseModel):
     total: int
     query_echo: dict
     message: str
+    narrative: str
+    generation_mode: str
+    sources: list[str] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #

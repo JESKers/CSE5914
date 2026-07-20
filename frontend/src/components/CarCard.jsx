@@ -78,6 +78,12 @@ export default function CarCard({ car }) {
             </ul>
           </div>
         )}
+        {car.vpic_evidence?.status && (
+          <p className="card__vpic mono">
+            NHTSA vPIC: {car.vpic_evidence.status.replaceAll("_", " ")}
+            {car.vpic_evidence.vehicle_type ? ` · ${car.vpic_evidence.vehicle_type}` : ""}
+          </p>
+        )}
       </div>
     </article>
   );

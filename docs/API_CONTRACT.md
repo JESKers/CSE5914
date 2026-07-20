@@ -136,7 +136,13 @@ result includes evidence-based `match_reasons`:
 ```
 
 The endpoint does not require an LLM to enforce constraints. Generated narrative
-can be layered on later, but stored Elasticsearch facts remain authoritative.
+is produced through LangChain and local Ollama from only the Elasticsearch cars
+and vPIC evidence returned in the response. If Ollama is unavailable,
+`generation_mode` is `deterministic` and the retrieved results remain available.
+Each result includes `vpic_evidence.status` (`verified`, `not_found`,
+`not_supported`, `unavailable`, or `not_checked`). vPIC lookups are capped per
+request and cached; missing NHTSA data is never treated as proof that a feature
+or vehicle is absent.
 
 ---
 

@@ -14,8 +14,9 @@ python evaluation/run_evaluation.py --api-url http://localhost:8000
 The first command evaluates extraction of the ten structured filter fields. The
 second also calls the live `/recommend` endpoint and measures request success,
 latency, empty results, and whether any returned vehicle violates an applied hard
-constraint. Reports are written to `evaluation/results/latest.json` and ignored
-by Git.
+constraint. It also reports LangChain/Ollama versus deterministic generation and
+the distribution of vPIC verification statuses. Reports are written to
+`evaluation/results/latest.json` and ignored by Git.
 
 The offline score measures constraint extraction, not subjective relevance. A
 soft-preference case with no false hard filters passes even if ranking still

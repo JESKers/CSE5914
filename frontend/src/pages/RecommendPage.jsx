@@ -43,6 +43,8 @@ export default function RecommendPage() {
       {data && (
         <div style={{ marginTop: 32 }}>
           <p>{data.message}</p>
+          {data.narrative && <p className="reco__narrative">{data.narrative}</p>}
+          <p className="mono">Generated via {data.generation_mode}; sources: {data.sources?.join(" + ")}</p>
           <ResultsGrid
             results={data.results}
             total={data.total}

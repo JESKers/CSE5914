@@ -17,6 +17,7 @@ result instead of an exception, so the rest of the API keeps working offline.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from threading import Lock
@@ -107,6 +108,44 @@ def get_models_for_make(make: str, year: int | None = None) -> list[dict[str, An
     else:
         data = _get(f"GetModelsForMake/{make}")
     return data.get("Results", [])
+
+
+def model_evidence(make: str, model: str, year: int | None) -> dict[str, Any]:
+    """Verify a catalog make/model/year and return evidence suitable for RAG.
+
+    vPIC's model-year method supports years after 1995. A missing value is kept
+    distinct from a negative result because NHTSA missing data does not prove a
+    vehicle or feature does not exist.
+    """
+    if year is None or year <= 1995:
+        return {
+            "status": "not_supported", "verified": None,
+            "reason": "vPIC model-year verification supports years after 1995",
+        }
+
+    path = f"GetModelsForMakeYear/make/{make}/modelyear/{year}"
+    data = _get(path)
+    if data.get("_error"):
+        return {"status": "unavailable", "verified": None, "reason": "vPIC API unavailable"}
+
+    def normalized(value: Any) -> str:
+        return re.sub(r"[^a-z0-9]", "", str(value).casefold())
+
+    wanted = normalized(model)
+    match = next((row for row in data.get("Results", []) if normalized(row.get("Model_Name")) == wanted), None)
+    if match is None:
+        return {
+            "status": "not_found", "verified": False,
+            "reason": f"{model} was not present in the vPIC {make} {year} model list",
+            "source": f"{BASE_URL}/{path}",
+        }
+    return {
+        "status": "verified", "verified": True,
+        "make_id": match.get("Make_ID"), "model_id": match.get("Model_ID"),
+        "vehicle_type": match.get("VehicleTypeName"),
+        "matched_model": match.get("Model_Name"),
+        "source": f"{BASE_URL}/{path}",
+    }
 
 
 def _load_snapshot() -> dict[str, Any]:

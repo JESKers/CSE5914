@@ -732,6 +732,18 @@ textarea {
 .card__reasons li + li {
   margin-top: 4px;
 }
+.card__vpic {
+  margin-top: 10px;
+  color: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+.reco__narrative {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+}
 
 /* ---- skeleton / empty --------------------------------------------------- */
 .skel {
