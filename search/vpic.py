@@ -33,11 +33,15 @@ CACHE_TTL_SECONDS = 60 * 60  # 1 hour
 # vPIC models for the makes actually in our catalog. Lets model lookups answer
 # offline/instantly; see snapshot_models_for_make().
 SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "vpic_models.json"
+EVIDENCE_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "vpic_evidence_cache.json"
+EVIDENCE_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
 
 _cache: dict[str, tuple[float, Any]] = {}
 _cache_lock = Lock()
 _snapshot: dict[str, Any] | None = None
 _snapshot_lock = Lock()
+_evidence_cache: dict[str, Any] | None = None
+_evidence_cache_lock = Lock()
 
 
 def _cache_get(key: str) -> Any | None:
@@ -110,6 +114,37 @@ def get_models_for_make(make: str, year: int | None = None) -> list[dict[str, An
     return data.get("Results", [])
 
 
+def _evidence_cache_get(key: str) -> dict[str, Any] | None:
+    global _evidence_cache
+    with _evidence_cache_lock:
+        if _evidence_cache is None:
+            try:
+                _evidence_cache = json.loads(EVIDENCE_CACHE_PATH.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                _evidence_cache = {}
+        hit = _evidence_cache.get(key)
+        if not hit or time.time() - hit.get("cached_at", 0) > EVIDENCE_CACHE_TTL_SECONDS:
+            return None
+        return {**hit["evidence"], "cache_hit": True}
+
+
+def _evidence_cache_set(key: str, evidence: dict[str, Any]) -> None:
+    global _evidence_cache
+    if evidence.get("status") not in {"verified", "not_found"}:
+        return
+    with _evidence_cache_lock:
+        if _evidence_cache is None:
+            _evidence_cache = {}
+        _evidence_cache[key] = {"cached_at": time.time(), "evidence": evidence}
+        try:
+            EVIDENCE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = EVIDENCE_CACHE_PATH.with_suffix(".tmp")
+            temp_path.write_text(json.dumps(_evidence_cache, indent=2), encoding="utf-8")
+            temp_path.replace(EVIDENCE_CACHE_PATH)
+        except OSError:
+            pass
+
+
 def model_evidence(make: str, model: str, year: int | None) -> dict[str, Any]:
     """Verify a catalog make/model/year and return evidence suitable for RAG.
 
@@ -123,6 +158,10 @@ def model_evidence(make: str, model: str, year: int | None) -> dict[str, Any]:
             "reason": "vPIC model-year verification supports years after 1995",
         }
 
+    cache_key = f"{make.casefold()}|{model.casefold()}|{year}"
+    if cached := _evidence_cache_get(cache_key):
+        return cached
+
     path = f"GetModelsForMakeYear/make/{make}/modelyear/{year}"
     data = _get(path)
     if data.get("_error"):
@@ -134,18 +173,24 @@ def model_evidence(make: str, model: str, year: int | None) -> dict[str, Any]:
     wanted = normalized(model)
     match = next((row for row in data.get("Results", []) if normalized(row.get("Model_Name")) == wanted), None)
     if match is None:
-        return {
+        evidence = {
             "status": "not_found", "verified": False,
             "reason": f"{model} was not present in the vPIC {make} {year} model list",
             "source": f"{BASE_URL}/{path}",
+            "cache_hit": False,
         }
-    return {
+        _evidence_cache_set(cache_key, evidence)
+        return evidence
+    evidence = {
         "status": "verified", "verified": True,
         "make_id": match.get("Make_ID"), "model_id": match.get("Model_ID"),
         "vehicle_type": match.get("VehicleTypeName"),
         "matched_model": match.get("Model_Name"),
         "source": f"{BASE_URL}/{path}",
+        "cache_hit": False,
     }
+    _evidence_cache_set(cache_key, evidence)
+    return evidence
 
 
 def _load_snapshot() -> dict[str, Any]:

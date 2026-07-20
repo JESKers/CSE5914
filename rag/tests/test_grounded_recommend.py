@@ -30,15 +30,19 @@ def test_llm_prompt_contains_only_retrieved_evidence(monkeypatch):
     class FakeModel:
         def invoke(self, prompt):
             captured["prompt"] = prompt
-            return type("Response", (), {"content": "Choose the M4 [car:42]."})()
+            return type("Response", (), {"content": (
+                '{"summary":"Choose the M4 [car:42].",'
+                '"recommended_vehicle_ids":["42"],"comparison_points":[]}'
+            )})()
 
     monkeypatch.setattr(grounded_recommend, "get_chat_model", lambda temperature=0: FakeModel())
     enriched = [{**CAR, "vpic_evidence": {"status": "verified", "vehicle_type": "PASSENGER CAR"}}]
 
-    text, mode = grounded_recommend.generate_grounded_summary("manual BMW", enriched)
+    text, mode, structured = grounded_recommend.generate_grounded_summary("manual BMW", enriched)
 
     assert mode == "langchain-ollama"
     assert text == "Choose the M4 [car:42]."
+    assert structured["recommended_vehicle_ids"] == ["42"]
     assert "[car:42]" in captured["prompt"]
     assert "msrp=65000" in captured["prompt"]
 
@@ -49,19 +53,23 @@ def test_ollama_failure_returns_grounded_fallback(monkeypatch):
             raise ConnectionError("offline")
 
     monkeypatch.setattr(grounded_recommend, "get_chat_model", lambda temperature=0: FailingModel())
-    text, mode = grounded_recommend.generate_grounded_summary("manual BMW", [CAR])
+    text, mode, structured = grounded_recommend.generate_grounded_summary("manual BMW", [CAR])
 
     assert mode == "deterministic"
     assert "[car:42]" in text
+    assert structured["recommended_vehicle_ids"] == ["42"]
 
 
 def test_uncited_or_unknown_llm_claim_is_replaced_with_fallback(monkeypatch):
     class HallucinatingModel:
         def invoke(self, prompt):
-            return type("Response", (), {"content": "Choose an invented car [car:999]."})()
+            return type("Response", (), {"content": (
+                '{"summary":"Choose an invented car [car:999].",'
+                '"recommended_vehicle_ids":["999"],"comparison_points":[]}'
+            )})()
 
     monkeypatch.setattr(grounded_recommend, "get_chat_model", lambda temperature=0: HallucinatingModel())
-    text, mode = grounded_recommend.generate_grounded_summary("manual BMW", [CAR])
+    text, mode, _ = grounded_recommend.generate_grounded_summary("manual BMW", [CAR])
 
     assert mode == "deterministic"
     assert "[car:42]" in text

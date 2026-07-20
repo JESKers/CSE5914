@@ -85,17 +85,24 @@ class RecommendationResult(CarResult):
     """A retrieved car plus facts explaining why it matched the request."""
     match_reasons: list[str] = Field(default_factory=list)
     vpic_evidence: dict = Field(default_factory=dict)
+    relaxed_constraints: list[str] = Field(default_factory=list)
 
 
 class RecommendResponse(BaseModel):
     """Grounded recommendations; every result comes from Elasticsearch."""
     results: list[RecommendationResult]
+    alternatives: list[RecommendationResult] = Field(default_factory=list)
     total: int
     query_echo: dict
     message: str
     narrative: str
     generation_mode: str
     sources: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    recommended_vehicle_ids: list[str] = Field(default_factory=list)
+    comparison_points: list[str] = Field(default_factory=list)
+    request_id: str
+    timings_ms: dict[str, float] = Field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #

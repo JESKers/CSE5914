@@ -45,11 +45,30 @@ export default function RecommendPage() {
           <p>{data.message}</p>
           {data.narrative && <p className="reco__narrative">{data.narrative}</p>}
           <p className="mono">Generated via {data.generation_mode}; sources: {data.sources?.join(" + ")}</p>
+          {data.warnings?.map((warning) => (
+            <p className="results__error" key={warning}>{warning}</p>
+          ))}
+          {data.comparison_points?.length > 0 && (
+            <ul className="reco__comparisons">
+              {data.comparison_points.map((point) => <li key={point}>{point}</li>)}
+            </ul>
+          )}
           <ResultsGrid
             results={data.results}
             total={data.total}
             size={data.total || data.results.length}
           />
+          {data.alternatives?.length > 0 && (
+            <div className="reco__alternatives">
+              <h3>Near matches</h3>
+              <p>These vehicles violate only the explicitly listed relaxed constraint.</p>
+              <ResultsGrid
+                results={data.alternatives}
+                total={data.alternatives.length}
+                size={data.alternatives.length}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -128,6 +128,13 @@ result includes evidence-based `match_reasons`:
   ],
   "total": 5,
   "message": "Found 5 vehicles that satisfy the extracted hard constraints.",
+  "alternatives": [],
+  "warnings": [],
+  "generation_mode": "langchain-ollama",
+  "recommended_vehicle_ids": ["42"],
+  "comparison_points": ["The Ford has the highest horsepower [car:42]."],
+  "request_id": "d5c6...",
+  "timings_ms": {"parse": 2.1, "elasticsearch": 18.4, "total": 242.8},
   "query_echo": {
     "query": "fast sports car under $50,000",
     "parsed_filters": { "price_max": 50000, "hp_min": 300, "q": "sports coupe", "sort": "hp", "order": "desc" }
@@ -142,7 +149,10 @@ and vPIC evidence returned in the response. If Ollama is unavailable,
 Each result includes `vpic_evidence.status` (`verified`, `not_found`,
 `not_supported`, `unavailable`, or `not_checked`). vPIC lookups are capped per
 request and cached; missing NHTSA data is never treated as proof that a feature
-or vehicle is absent.
+or vehicle is absent. Contradictory ranges return no search results and explicit
+`warnings`. When exact results are empty, single-constraint near matches may be
+returned only under `alternatives`, with each relaxed field listed in
+`relaxed_constraints`; they are never mixed into `results`.
 
 ---
 

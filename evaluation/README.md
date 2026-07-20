@@ -9,13 +9,16 @@ From the repository root:
 ```bash
 python evaluation/run_evaluation.py
 python evaluation/run_evaluation.py --api-url http://localhost:8000
+python evaluation/run_evaluation.py --min-exact-match-rate 0.95
 ```
 
 The first command evaluates extraction of the ten structured filter fields. The
 second also calls the live `/recommend` endpoint and measures request success,
 latency, empty results, and whether any returned vehicle violates an applied hard
 constraint. It also reports LangChain/Ollama versus deterministic generation and
-the distribution of vPIC verification statuses. Reports are written to
+the distribution of vPIC verification statuses. Labeled soft-preference cases
+report mean Precision@5 from explicit style, make, price, horsepower, and MPG
+criteria. Reports are written to
 `evaluation/results/latest.json` and ignored by Git.
 
 The offline score measures constraint extraction, not subjective relevance. A

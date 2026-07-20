@@ -744,6 +744,19 @@ textarea {
   border-left: 3px solid var(--accent);
   background: var(--surface-2);
 }
+.reco__comparisons,
+.reco__alternatives {
+  margin-top: 18px;
+}
+.reco__comparisons {
+  padding-left: 20px;
+}
+.card__relaxed {
+  margin-top: 8px;
+  color: var(--danger, #b45309);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
 
 /* ---- skeleton / empty --------------------------------------------------- */
 .skel {

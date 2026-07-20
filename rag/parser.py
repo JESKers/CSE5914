@@ -1,10 +1,8 @@
-"""Natural-language -> structured filters.
-
-This version keeps parsing deterministic for the demo.
-It avoids relying completely on the LLM because bad filter parsing causes bad RAG context.
-"""
+"""Deterministic natural-language to structured vehicle-search filters."""
+import json
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -15,275 +13,234 @@ from backend.app.schemas import SearchFilters
 
 try:
     from search import search_service
-except ImportError:  # pragma: no cover - search core unavailable in some contexts
+except ImportError:  # pragma: no cover
     search_service = None
+
+
+def _number(match) -> int:
+    value = int(match.group(1).replace(",", ""))
+    return value * (1000 if match.group(2) else 1)
 
 
 def _extract_price_max(query: str):
     q = query.lower()
-
-    # Match phrases like "under $50,000", "below 30000", "less than 25k"
     patterns = [
         r"(?:under|below|less than)\s*\$?\s*([0-9]+(?:,[0-9]{3})?)(k)?",
         r"\$?\s*([0-9]+(?:,[0-9]{3})?)(k)?\s*(?:or less|and under)",
+        r"(?:do not spend more than|maximum price of|my ceiling is)\s*\$?\s*([0-9]+(?:,[0-9]{3})?)(k)?",
+        r"(?:car\s*)?<=\s*\$?\s*([0-9]+(?:,[0-9]{3})?)(k)?",
     ]
-
     for pattern in patterns:
-        match = re.search(pattern, q)
-        if match:
-            value = match.group(1).replace(",", "")
-            number = int(value)
-
-            if match.group(2) == "k":
-                number *= 1000
-
-            return number
-
+        if match := re.search(pattern, q):
+            suffix = q[match.end():].lstrip()
+            if suffix.startswith("hp") or suffix.startswith("horsepower"):
+                continue
+            return _number(match)
     return None
+
+
+def _extract_price_min(query: str):
+    q = query.lower()
+    if "do not spend more than" in q:
+        return None
+    match = re.search(r"(?:over|more than)\s*\$\s*([0-9]+(?:,[0-9]{3})?)(k)?", q)
+    if not match:
+        match = re.search(r"(?:over|more than)\s*([0-9]+(?:,[0-9]{3})?)(k)\b", q)
+    return _number(match) + 1 if match else None
 
 
 def _extract_years(query: str):
     q = query.lower()
+    year = r"(?:20[0-9]{2}|19[0-9]{2})"
+    if match := re.search(rf"(?:between|model years?)\s*({year})\s*(?:and|-)\s*({year})", q):
+        return int(match.group(1)), int(match.group(2))
 
-    year_min = None
-    year_max = None
+    year_min = year_max = None
+    if match := re.search(rf"no older than\s*({year})", q):
+        year_min = int(match.group(1))
+    elif match := re.search(rf"({year})\s*or newer", q):
+        year_min = int(match.group(1))
+    elif match := re.search(rf"since\s*({year})", q):
+        year_min = int(match.group(1))
+    elif match := re.search(rf"(?:after|newer than)\s*({year})", q):
+        year_min = int(match.group(1)) + 1
 
-    after_match = re.search(r"(?:after|newer than|since)\s*(20[0-9]{2}|19[0-9]{2})", q)
-    before_match = re.search(r"(?:before|older than)\s*(20[0-9]{2}|19[0-9]{2})", q)
-    exact_match = re.search(r"\b(20[0-9]{2}|19[0-9]{2})\b", q)
-
-    if after_match:
-        year_min = int(after_match.group(1))
-
-    if before_match:
-        year_max = int(before_match.group(1))
-
-    if exact_match and not year_min and not year_max:
-        year_min = int(exact_match.group(1))
-        year_max = int(exact_match.group(1))
-
+    if "no older than" not in q and (match := re.search(rf"(?:before|older than)\s*({year})", q)):
+        year_max = int(match.group(1)) - 1
+    exact = re.search(rf"\b({year})\b", q)
+    if exact and year_min is None and year_max is None:
+        year_min = year_max = int(exact.group(1))
     return year_min, year_max
 
 
+def _extract_hp_range(query: str):
+    q = query.lower()
+    if match := re.search(r"between\s*([0-9]{2,4})\s*and\s*([0-9]{2,4})\s*(?:hp|horsepower)", q):
+        return int(match.group(1)), int(match.group(2))
+    if match := re.search(r"([0-9]{2,4})\s*(?:hp|horsepower)\s*exactly", q):
+        value = int(match.group(1))
+        return value, value
+    return None, None
+
+
 def _extract_hp_min(query: str):
-    """Extract hard lower bounds such as 'at least 300 hp' or '300+ horsepower'."""
     q = query.lower()
     patterns = [
         r"(?:at least|minimum|min\.?)\s*([0-9]{2,4})\s*(?:hp|horsepower)",
         r"([0-9]{2,4})\s*\+\s*(?:hp|horsepower)",
         r"(?:over|more than)\s*([0-9]{2,4})\s*(?:hp|horsepower)",
+        r"(?:hp|horsepower)\s*>=\s*([0-9]{2,4})",
     ]
     for pattern in patterns:
-        match = re.search(pattern, q)
-        if match:
-            return int(match.group(1))
+        if match := re.search(pattern, q):
+            value = int(match.group(1))
+            return value + 1 if re.search(r"(?:over|more than)", match.group(0)) else value
     return None
 
 
-# Ordered so the first matching style wins when a query mentions more than one
-# (mirrors how a human would prioritize the most specific body-style word).
-BODY_STYLES = ["coupe", "suv", "sedan", "truck", "convertible", "wagon"]
+def _extract_hp_max(query: str):
+    q = query.lower()
+    if match := re.search(r"(?:under|below|less than)\s*([0-9]{2,4})\s*(?:hp|horsepower)", q):
+        return int(match.group(1)) - 1
+    return None
 
+
+BODY_STYLES = ["coupe", "suv", "sedan", "truck", "convertible", "wagon"]
 MAKES = [
-    "land rover",
-    "mercedes-benz",
-    "mercedes",
-    "chevrolet",
-    "chevy",
-    "acura",
-    "audi",
-    "bmw",
-    "buick",
-    "cadillac",
-    "chrysler",
-    "dodge",
-    "ford",
-    "gmc",
-    "honda",
-    "hyundai",
-    "infiniti",
-    "jaguar",
-    "jeep",
-    "kia",
-    "lexus",
-    "lincoln",
-    "mazda",
-    "mini",
-    "mitsubishi",
-    "nissan",
-    "porsche",
-    "subaru",
-    "tesla",
-    "toyota",
-    "volkswagen",
-    "volvo",
+    "land rover", "mercedes-benz", "mercedes", "chevrolet", "chevy",
+    "acura", "audi", "bmw", "buick", "cadillac", "chrysler", "dodge",
+    "ford", "gmc", "honda", "hyundai", "infiniti", "jaguar", "jeep",
+    "kia", "lexus", "lincoln", "mazda", "mini", "mitsubishi", "nissan",
+    "porsche", "subaru", "tesla", "toyota", "volkswagen", "volvo",
 ]
+MAKE_ALIASES = {
+    "vw": "volkswagen", "volkswagon": "volkswagen",
+    "bimmer": "bmw", "beemer": "bmw", "subie": "subaru",
+    "caddy": "cadillac", "toyo": "toyota", "merc": "mercedes-benz",
+    "benz": "mercedes-benz", "chevorlet": "chevrolet",
+}
 
 
 def _detect_make(q: str):
-    # Returned value must match the casing actually indexed in Elasticsearch
-    # (lowercase `keyword` field) since search_service uses an exact `term`
-    # filter on `make` -- any mismatch here silently drops every result.
-    for make in MAKES:
-        if re.search(r"\b" + re.escape(make) + r"\b", q):
-            if make == "chevy":
-                return "chevrolet"
-            if make == "mercedes":
-                return "mercedes-benz"
-            return make
-    return None
+    found = []
+    for token, canonical in [(make, make) for make in MAKES] + list(MAKE_ALIASES.items()):
+        if not re.search(r"\b" + re.escape(token) + r"\b", q):
+            continue
+        if re.search(rf"\b(?:not|no)\s+(?:a\s+)?{re.escape(token)}\b", q):
+            continue
+        canonical = {"chevy": "chevrolet", "mercedes": "mercedes-benz"}.get(canonical, canonical)
+        if canonical not in found:
+            found.append(canonical)
+    return found[0] if len(found) == 1 else None
+
+
+@lru_cache(maxsize=64)
+def _local_models(make: str) -> tuple[str, ...]:
+    models = set()
+    try:
+        with (ROOT / "data" / "cars_clean.json").open(encoding="utf-8") as fh:
+            for line in fh:
+                row = json.loads(line)
+                if str(row.get("make", "")).casefold() == make.casefold() and row.get("model"):
+                    models.add(str(row["model"]))
+    except (OSError, ValueError):
+        return ()
+    return tuple(sorted(models, key=len, reverse=True))
 
 
 def _detect_model(q: str, make):
-    """Match a known model name for `make` against the query text.
-
-    Looks up the live list of models for the detected make (same facet the
-    frontend's dependent Model dropdown uses) instead of maintaining a giant
-    static model list, so it stays correct as the dataset changes.
-    """
-    if not make or search_service is None:
+    if not make:
         return None
-
-    try:
-        candidates = search_service.models(make)
-    except Exception:
-        return None
-
+    candidates = _local_models(make)
+    if not candidates and search_service is not None:
+        try:
+            candidates = search_service.models(make)
+        except Exception:
+            return None
+    normalized_query = re.sub(r"[^a-z0-9]+", " ", q).strip()
     best = None
     for model in candidates:
-        model_l = str(model).lower()
-        if model_l and re.search(r"\b" + re.escape(model_l) + r"\b", q):
-            if best is None or len(model_l) > len(best):
-                best = model_l
+        normalized_model = re.sub(r"[^a-z0-9]+", " ", str(model).lower()).strip()
+        if normalized_model and re.search(r"\b" + re.escape(normalized_model) + r"\b", normalized_query):
+            if best is None or len(normalized_model) > len(best):
+                best = str(model).lower()
     return best
 
 
 def detect_intents(query: str) -> dict:
-    """Single source of truth for keyword/intent detection.
-
-    Both `parse_query` (filters) and `rag.recommend` (extra-query fan-out +
-    re-ranking) call this instead of independently re-matching the same
-    keywords, so adding/adjusting an intent only needs to happen here.
-    """
     q = query.lower()
-
     body_styles = [style for style in BODY_STYLES if style in q or f"{style}s" in q]
-
+    transmission_choice = bool(re.search(r"manual\s+or\s+automatic|manual\s+automatic", q))
+    make = _detect_make(q)
     return {
         "body_styles": body_styles,
-        "sport": any(
-            w in q for w in ["sporty", "sport", "fast", "performance", "powerful", "horsepower"]
-        ),
-        "affordable": any(
-            w in q
-            for w in ["affordable", "cheap", "budget", "good price", "balance of price", "value"]
-        ),
-        "fuel_efficient": any(
-            w in q
-            for w in [
-                "fuel efficient", "fuel efficiency", "good mpg", "mpg",
-                "commuting", "commuter", "daily",
-            ]
-        ),
+        "sport": any(w in q for w in ["sporty", "sport", "fast", "performance", "powerful", "horsepower"]),
+        "affordable": any(w in q for w in ["affordable", "cheap", "budget", "good price", "balance of price", "value"]),
+        "fuel_efficient": any(w in q for w in ["fuel efficient", "fuel efficiency", "good mpg", "mpg", "commuting", "commuter", "daily"]),
         "luxury": any(w in q for w in ["luxury", "premium", "comfortable", "high end"]),
-        "manual": "manual" in q,
-        "automatic": "automatic" in q,
-        "electric": "electric" in q or "ev" in q,
+        "manual": bool(re.search(r"\b(?:manual|stick shift)\b", q)) and not transmission_choice and not re.search(r"\bnot\s+(?:a\s+)?manual\b", q),
+        "automatic": bool(re.search(r"\bautomatic\b", q)) and not transmission_choice and not re.search(r"\bnot\s+(?:an?\s+)?automatic\b", q),
+        "electric": (
+            bool(re.search(r"\b(?:electric|ev)\b", q)) or make == "tesla"
+        ) and not re.search(r"\b(?:not|no)\s+(?:an?\s+)?(?:electric|ev)\b", q),
         "hybrid": "hybrid" in q,
-        "diesel": "diesel" in q,
-        "make": (make := _detect_make(q)),
+        "diesel": "diesel" in q and not re.search(r"\b(?:not|no)\s+diesel\b", q),
+        "make": make,
         "model": _detect_model(q, make),
     }
 
 
 def parse_query(query: str) -> SearchFilters:
     intents = detect_intents(query)
-
-    filters = {
-        "page": 1,
-        "size": 20,
-    }
-
+    filters = {"page": 1, "size": 20}
     keywords = []
 
-    price_max = _extract_price_max(query)
-    if price_max:
-        filters["price_max"] = price_max
-
+    if value := _extract_price_max(query):
+        filters["price_max"] = value
+    if value := _extract_price_min(query):
+        filters["price_min"] = value
     year_min, year_max = _extract_years(query)
-    if year_min:
+    if year_min is not None:
         filters["year_min"] = year_min
-    if year_max:
+    if year_max is not None:
         filters["year_max"] = year_max
-
-    hp_min = _extract_hp_min(query)
-    if hp_min:
+    range_min, range_max = _extract_hp_range(query)
+    hp_min = range_min or _extract_hp_min(query)
+    hp_max = range_max or _extract_hp_max(query)
+    if hp_min is not None:
         filters["hp_min"] = hp_min
+    if hp_max is not None:
+        filters["hp_max"] = hp_max
 
-    # Body/style intent
     for style in intents["body_styles"]:
-        if style == "truck":
-            keywords.extend(["truck", "pickup"])
-        else:
-            keywords.append(style)
-
-    # Performance intent
+        keywords.extend(["truck", "pickup"] if style == "truck" else [style])
     if intents["sport"]:
         keywords.extend(["sport", "performance"])
-        filters["sort"] = "hp"
-        filters["order"] = "desc"
-
-    # Affordable/value intent
+        filters.update(sort="hp", order="desc")
     if intents["affordable"]:
         keywords.extend(["affordable", "value"])
-
         if "sort" not in filters:
-            filters["sort"] = "price"
-            filters["order"] = "asc"
-
+            filters.update(sort="price", order="asc")
         if "price_max" not in filters:
-            filters["price_max"] = 50000
-
-    # Fuel efficiency / commuting intent
+            filters["price_max"] = 30000 if intents["fuel_efficient"] else 50000
     if intents["fuel_efficient"]:
         keywords.extend(["fuel efficient", "mpg", "commuter"])
-        if "price_max" not in filters and intents["affordable"]:
-            filters["price_max"] = 30000
-
-    # Luxury intent
     if intents["luxury"]:
         keywords.extend(["luxury", "premium"])
-
-    # Transmission intent
     if intents["manual"]:
         filters["transmission_type"] = "MANUAL"
-
     if intents["automatic"]:
         filters["transmission_type"] = "AUTOMATIC"
-
-    # Fuel type intent
     if intents["electric"]:
         filters["engine_fuel_type"] = "electric"
         keywords.append("electric")
-
     if intents["hybrid"]:
         keywords.append("hybrid")
-
     if intents["diesel"]:
         filters["engine_fuel_type"] = "diesel"
-
-    # Brand detection
     if intents["make"]:
         filters["make"] = intents["make"]
-
-    # Model detection (only meaningful once the make narrows the candidate list)
     if intents["model"]:
         filters["model"] = intents["model"]
-
-    # Final q string
-    if keywords:
-        filters["q"] = " ".join(dict.fromkeys(keywords))
-    else:
-        filters["q"] = query
-
+    filters["q"] = " ".join(dict.fromkeys(keywords)) if keywords else query
     return SearchFilters(**filters)

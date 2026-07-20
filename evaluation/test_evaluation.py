@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from evaluation.run_evaluation import FILTER_FIELDS, _constraint_violations, evaluate_parser
+from evaluation.run_evaluation import FILTER_FIELDS, _constraint_violations, _is_relevant, evaluate_parser
 
 
 def test_labeled_query_set_is_large_unique_and_well_formed():
@@ -33,3 +33,10 @@ def test_constraint_violation_check_covers_numeric_and_exact_fields():
     filters = {"make": "ford", "year_min": 2020, "price_max": 50000, "hp_min": 300}
 
     assert _constraint_violations(car, filters) == ["year_min", "price_max", "hp_min"]
+
+
+def test_relevance_label_checks_top_result_attributes():
+    car = {"make": "Honda", "vehicle_style": "4dr SUV", "msrp": 28000,
+           "engine_hp": 220, "city_mpg": 26, "highway_mpg": 32}
+    assert _is_relevant(car, {"vehicle_styles_any": ["suv"], "max_msrp": 30000})
+    assert not _is_relevant(car, {"min_hp": 300})

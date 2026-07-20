@@ -84,6 +84,11 @@ export default function CarCard({ car }) {
             {car.vpic_evidence.vehicle_type ? ` · ${car.vpic_evidence.vehicle_type}` : ""}
           </p>
         )}
+        {car.relaxed_constraints?.length > 0 && (
+          <p className="card__relaxed mono">
+            RELAXED: {car.relaxed_constraints.join(", ")}
+          </p>
+        )}
       </div>
     </article>
   );

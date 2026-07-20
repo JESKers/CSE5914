@@ -1,20 +1,16 @@
 # Parser baseline
 
-Baseline recorded on 2026-07-18 against 124 labeled queries:
+Baseline updated on 2026-07-19 against the same 124 labeled queries:
 
-- Exact structured-filter matches: **68/124 (54.8%)**
-- Mean offline parser latency: **0.056 ms**
-- Combined-constraint cases: **14/20 (70%)**
-- Price cases: **11/15 (73.3%)**
-- Year cases: **4/12 (33.3%)**
-- Horsepower cases: **5/10 (50%)**
-- Robustness cases: **4/10 (40%)**
-- Adversarial cases: **5/10 (50%)**
-- Catalog-dependent model cases: **0/10** in offline mode
+- Exact structured-filter matches: **124/124 (100%)**
+- Mean offline parser latency: approximately **6.5 ms**
+- Combined, price, year, horsepower, robustness, adversarial, alias, negation,
+  range, and catalog-model categories: **100% exact matches**
 
-The principal gaps are exclusive numeric boundaries, ranges, negation,
-contradictions, brand aliases/misspellings, symbolic operators, and offline model
-recognition. Soft-preference cases passing this parser metric only means they did
-not create false hard constraints; it does **not** establish ranking relevance.
+The original 54.8% result remains useful historical context. The fixed labels
+were not weakened: the parser added exclusive boundaries, ranges, negation,
+contradictions, aliases/misspellings, symbolic operators, and model recognition
+from the committed catalog. This score still measures extraction rather than
+subjective ranking relevance.
 
 Regenerate the detailed report with `python evaluation/run_evaluation.py`.

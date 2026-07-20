@@ -17,6 +17,10 @@ Additive Buy/Rent store + NHTSA vPIC endpoints (see docs/STORE_VPIC.md):
     GET  /vpic/decode/{vin}     live VIN decode via vPIC
     GET  /vpic/models           live models for a make/year via vPIC
 """
+import logging
+import time
+import uuid
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -47,6 +51,7 @@ from .schemas import (
 )
 
 app = FastAPI(title="JESKers Car Search", version="0.1.0")
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -132,8 +137,26 @@ def recommend(req: RecommendRequest):
     from rag.parser import parse_query  # lazy import: only /recommend needs the local parser
     from rag.grounded_recommend import enrich_with_vpic, generate_grounded_summary
 
+    request_id = uuid.uuid4().hex
+    started = time.perf_counter()
     filters = parse_query(req.query)
+    parsed_at = time.perf_counter()
+    conflicts = _filter_conflicts(filters)
+    if conflicts:
+        narrative = "The request contains contradictory hard constraints: " + "; ".join(conflicts)
+        return RecommendResponse(
+            results=[], alternatives=[], total=0,
+            query_echo={"query": req.query, "parsed_filters": filters.model_dump(exclude_none=True)},
+            message="Resolve the contradictory constraints before searching.",
+            narrative=narrative, generation_mode="deterministic",
+            sources=["Elasticsearch vehicle catalog", "NHTSA vPIC"], warnings=conflicts,
+            request_id=request_id,
+            timings_ms={"parse": round((parsed_at - started) * 1000, 3)},
+        )
+
+    search_started = time.perf_counter()
     res = search_service.search(filters)
+    searched_at = time.perf_counter()
     grounded = []
     for row in res["results"]:
         if not _satisfies_hard_constraints(row, filters):
@@ -143,25 +166,93 @@ def recommend(req: RecommendRequest):
             match_reasons=_recommendation_reasons(row, filters),
         ))
 
-    enriched = enrich_with_vpic([item.model_dump() for item in grounded])
-    grounded = [RecommendationResult(**item) for item in enriched]
-    narrative, generation_mode = generate_grounded_summary(
-        req.query, [item.model_dump() for item in grounded]
+    alternatives, relaxation_warnings = ([], [])
+    if not grounded:
+        alternatives, relaxation_warnings = _relaxed_recommendations(filters)
+
+    narrative_input = grounded or alternatives
+    enriched = enrich_with_vpic([item.model_dump() for item in narrative_input])
+    narrative_input = [RecommendationResult(**item) for item in enriched]
+    if grounded:
+        grounded = narrative_input
+    else:
+        alternatives = narrative_input
+    narrative, generation_mode, structured = generate_grounded_summary(
+        req.query, [item.model_dump() for item in narrative_input]
     )
     message = (
         f"Found {len(grounded)} vehicles that satisfy the extracted hard constraints."
         if grounded
-        else "No vehicles satisfy all extracted hard constraints. Try broadening the request."
+        else "No exact matches were found; clearly labeled near matches are shown separately."
+    )
+    finished = time.perf_counter()
+    timings = {
+        "parse": round((parsed_at - started) * 1000, 3),
+        "elasticsearch": round((searched_at - search_started) * 1000, 3),
+        "enrichment_and_generation": round((finished - searched_at) * 1000, 3),
+        "total": round((finished - started) * 1000, 3),
+    }
+    logged_filters = filters.model_dump(exclude_none=True)
+    logged_filters.pop("q", None)  # free text may contain personal information
+    logger.info(
+        "recommendation_complete request_id=%s filters=%s exact=%d alternatives=%d "
+        "vehicle_ids=%s generation=%s timings_ms=%s",
+        request_id, logged_filters, len(grounded), len(alternatives),
+        [item.id for item in narrative_input], generation_mode, timings,
     )
     return RecommendResponse(
         results=grounded,
+        alternatives=alternatives,
         total=len(grounded),
         query_echo={"query": req.query, "parsed_filters": filters.model_dump(exclude_none=True)},
         message=message,
         narrative=narrative,
         generation_mode=generation_mode,
         sources=["Elasticsearch vehicle catalog", "NHTSA vPIC"],
+        warnings=relaxation_warnings,
+        recommended_vehicle_ids=structured["recommended_vehicle_ids"],
+        comparison_points=structured["comparison_points"],
+        request_id=request_id,
+        timings_ms=timings,
     )
+
+
+def _filter_conflicts(filters: SearchFilters) -> list[str]:
+    conflicts = []
+    for low, high, label in (
+        (filters.year_min, filters.year_max, "year"),
+        (filters.price_min, filters.price_max, "price"),
+        (filters.hp_min, filters.hp_max, "horsepower"),
+    ):
+        if low is not None and high is not None and low > high:
+            conflicts.append(f"{label} minimum {low} exceeds maximum {high}")
+    return conflicts
+
+
+def _relaxed_recommendations(filters: SearchFilters) -> tuple[list[RecommendationResult], list[str]]:
+    """Find near matches by dropping one constraint, never mixing them with exact results."""
+    relaxable = [
+        "q", "price_max", "price_min", "hp_min", "hp_max", "year_min", "year_max",
+        "transmission_type", "engine_fuel_type",
+    ]
+    for field in relaxable:
+        if getattr(filters, field) is None:
+            continue
+        relaxed = filters.model_copy(update={field: None, "page": 1, "size": 5})
+        response = search_service.search(relaxed)
+        candidates = [row for row in response["results"] if _satisfies_hard_constraints(row, relaxed)]
+        if not candidates:
+            continue
+        label = "soft keyword preference" if field == "q" else field
+        return [
+            RecommendationResult(
+                **row,
+                match_reasons=_recommendation_reasons(row, relaxed),
+                relaxed_constraints=[field],
+            )
+            for row in candidates[:5]
+        ], [f"No exact matches; relaxed {label} for the alternatives below."]
+    return [], ["No exact or single-constraint near matches were found."]
 
 
 def _satisfies_hard_constraints(car: dict, filters: SearchFilters) -> bool:

@@ -91,6 +91,13 @@ The compose stack starts Ollama at http://localhost:11434. On a host-managed
 Ollama installation, pull the required models with `ollama pull llama3.2` and
 `ollama pull nomic-embed-text` before using `POST /api/recommend`.
 
+The default stack is CPU-compatible. Machines with an NVIDIA Container Toolkit
+setup can opt into GPU acceleration:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
 ## Local dev — backend only
 
 ```bash

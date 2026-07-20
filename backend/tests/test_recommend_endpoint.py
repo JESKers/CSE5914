@@ -18,7 +18,10 @@ _MATCH = {
 class _FakeChatModel:
     def invoke(self, prompt):
         assert "[car:match]" in prompt
-        return type("Response", (), {"content": "The Mustang meets the request [car:match]."})()
+        return type("Response", (), {"content": (
+            '{"summary":"The Mustang meets the request [car:match].",'
+            '"recommended_vehicle_ids":["match"],"comparison_points":[]}'
+        )})()
 
 
 def _stub_grounding(monkeypatch):
@@ -51,6 +54,7 @@ def test_recommend_returns_grounded_reasons(monkeypatch):
     assert body["results"][0]["vpic_evidence"]["status"] == "verified"
     assert body["generation_mode"] == "langchain-ollama"
     assert body["narrative"].endswith("[car:match].")
+    assert body["recommended_vehicle_ids"] == ["match"]
     assert any("300 hp minimum" in reason for reason in body["results"][0]["match_reasons"])
     assert captured["filters"].hp_min == 300
     assert captured["filters"].price_max == 50000
@@ -70,10 +74,35 @@ def test_recommend_drops_row_that_violates_hard_constraint(monkeypatch):
     body = client.post("/recommend", json={"query": "Ford under $50k"}).json()
     assert body["results"] == []
     assert body["total"] == 0
-    assert body["message"].startswith("No vehicles satisfy")
+    assert body["alternatives"][0]["relaxed_constraints"] == ["price_max"]
+    assert body["message"].startswith("No exact matches")
 
 
 def test_recommend_rejects_empty_or_oversized_query():
     assert client.post("/recommend", json={"query": ""}).status_code == 422
     assert client.post("/recommend", json={"query": "   "}).status_code == 422
     assert client.post("/recommend", json={"query": "x" * 501}).status_code == 422
+
+
+def test_recommend_reports_contradictory_constraints(monkeypatch):
+    monkeypatch.setattr(main.search_service, "models", lambda make: [])
+    body = client.post(
+        "/recommend", json={"query": "newer than 2020 but before 2010"}
+    ).json()
+    assert body["results"] == [] and body["alternatives"] == []
+    assert "year minimum" in body["warnings"][0]
+
+
+def test_recommend_labels_relaxed_alternatives(monkeypatch):
+    _stub_grounding(monkeypatch)
+    monkeypatch.setattr(main.search_service, "models", lambda make: ["Mustang"])
+
+    def fake_search(filters):
+        rows = [] if filters.price_max is not None else [{**_MATCH, "msrp": 52000.0}]
+        return {"results": rows, "total": len(rows), "page": 1, "size": filters.size}
+
+    monkeypatch.setattr(main.search_service, "search", fake_search)
+    body = client.post("/recommend", json={"query": "Ford under $50k"}).json()
+    assert body["results"] == []
+    assert body["alternatives"][0]["relaxed_constraints"] == ["price_max"]
+    assert "relaxed price_max" in body["warnings"][0]

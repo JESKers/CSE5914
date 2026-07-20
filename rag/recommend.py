@@ -314,43 +314,20 @@ def retrieve_es_documents(query: str, top_k: int = 5) -> dict:
     }
 
 def recommend(query: str, rebuild: bool = False, top_k: int = 5):
-    """Answer a free-text question using Elasticsearch results as retrieval context."""
-    search_results = None
+    """CLI adapter for the same grounded ES + vPIC + LangChain pipeline as the API."""
+    from .grounded_recommend import enrich_with_vpic, generate_grounded_summary
 
-    # The first try uses the search index as context, which is the cleaner path for this demo.
     try:
         search_results = retrieve_es_documents(query, top_k=top_k)
         if not search_results["results"]:
             return "I found no matching cars in Elasticsearch for that query."
-
-        context = format_docs(search_results["results"])
-        if os.getenv("DEBUG_RAG", "false").lower() == "true":
-            print("\nRAG CONTEXT:")
-            print(context)
-            print()
-        prompt = PROMPT_TEMPLATE.format(context=context, question=query)
-        llm = get_chat_model()
-        response = llm.invoke(prompt)
-        return response.content if hasattr(response, "content") else str(response)
+        enriched = enrich_with_vpic(search_results["results"])
+        narrative, _, _ = generate_grounded_summary(query, enriched)
+        return narrative
     except Exception:
-        if search_results is not None and search_results.get("results"):
-            return build_fallback_answer(query, search_results["results"], top_k=top_k)
-
-        if rebuild or not index_exists():
-            try:
-                store = build_demo_index()
-                docs = store.similarity_search(query, k=top_k)
-                context = "\n\n".join(doc.page_content for doc in docs)
-                prompt = PROMPT_TEMPLATE.format(context=context, question=query)
-                llm = get_chat_model()
-                response = llm.invoke(prompt)
-                return response.content if hasattr(response, "content") else str(response)
-            except Exception:
-                return build_fallback_answer(query, [], top_k=top_k)
-
-        return build_fallback_answer(query, [], top_k=top_k)
+        return "The grounded recommendation service is unavailable."
 
 
 if __name__ == "__main__":
-    query = os.getenv("QUERY", "What is the difference between the skittles flavors?")
+    query = os.getenv("QUERY", "manual sports car under $50,000")
     print(recommend(query, rebuild=os.getenv("REBUILD_INDEX", "false").lower() == "true"))

@@ -124,6 +124,27 @@ def _constraint_violations(car: dict, filters: dict) -> list[str]:
     return violations
 
 
+def _is_relevant(car: dict, label: dict) -> bool:
+    style = str(car.get("vehicle_style", "")).casefold()
+    make = str(car.get("make", "")).casefold()
+    if label.get("vehicle_styles_any") and not any(
+        value.casefold() in style for value in label["vehicle_styles_any"]
+    ):
+        return False
+    if label.get("makes_any") and make not in {value.casefold() for value in label["makes_any"]}:
+        return False
+    numeric = (
+        ("max_msrp", "msrp", lambda actual, wanted: actual <= wanted),
+        ("min_hp", "engine_hp", lambda actual, wanted: actual >= wanted),
+        ("min_city_mpg", "city_mpg", lambda actual, wanted: actual >= wanted),
+        ("min_highway_mpg", "highway_mpg", lambda actual, wanted: actual >= wanted),
+    )
+    return all(
+        key not in label or (car.get(field) is not None and predicate(car[field], label[key]))
+        for key, field, predicate in numeric
+    )
+
+
 def evaluate_api(cases: list[dict], api_url: str) -> tuple[dict, list[dict]]:
     rows = []
     for case in cases:
@@ -147,6 +168,9 @@ def evaluate_api(cases: list[dict], api_url: str) -> tuple[dict, list[dict]]:
             for car in body.get("results", [])
         ]
         violations = [item for item in violations if item["fields"]]
+        relevance = case.get("relevance")
+        top_five = body.get("results", [])[:5]
+        relevant_count = sum(_is_relevant(car, relevance) for car in top_five) if relevance else None
         vpic_statuses = Counter(
             car.get("vpic_evidence", {}).get("status", "missing")
             for car in body.get("results", [])
@@ -156,9 +180,13 @@ def evaluate_api(cases: list[dict], api_url: str) -> tuple[dict, list[dict]]:
             "constraint_violations": violations, "latency_ms": round(latency_ms, 3),
             "vpic_statuses": dict(vpic_statuses),
             "generation_mode": body.get("generation_mode"), "error": error,
+            "relevance_precision_at_5": (
+                round(relevant_count / len(top_five), 4) if relevance and top_five else None
+            ),
         })
 
     successful = [row for row in rows if row["status"] == 200]
+    relevance_rows = [row for row in successful if row["relevance_precision_at_5"] is not None]
     metrics = {
         "cases": len(rows), "successful_requests": len(successful),
         "constraint_violations": sum(len(row["constraint_violations"]) for row in rows),
@@ -166,6 +194,11 @@ def evaluate_api(cases: list[dict], api_url: str) -> tuple[dict, list[dict]]:
         "mean_latency_ms": round(mean(row["latency_ms"] for row in successful), 3) if successful else None,
         "generation_modes": dict(Counter(row["generation_mode"] for row in successful)),
         "vpic_statuses": dict(sum((Counter(row["vpic_statuses"]) for row in successful), Counter())),
+        "mean_relevance_precision_at_5": (
+            round(mean(row["relevance_precision_at_5"] for row in relevance_rows), 4)
+            if relevance_rows else None
+        ),
+        "relevance_cases": len(relevance_rows),
     }
     return metrics, rows
 
@@ -175,6 +208,8 @@ def main() -> int:
     parser.add_argument("--queries", type=Path, default=Path(__file__).with_name("queries.json"))
     parser.add_argument("--api-url", help="Also evaluate a running backend, e.g. http://localhost:8000")
     parser.add_argument("--output", type=Path, default=Path(__file__).parent / "results" / "latest.json")
+    parser.add_argument("--min-exact-match-rate", type=float,
+                        help="Exit nonzero if parser accuracy falls below this value")
     args = parser.parse_args()
 
     cases = json.loads(args.queries.read_text(encoding="utf-8"))
@@ -193,6 +228,10 @@ def main() -> int:
         print(f"API constraint violations: {report['api']['metrics']['constraint_violations']}")
         print(f"Successful API requests: {report['api']['metrics']['successful_requests']}/{len(cases)}")
     print(f"Detailed report: {args.output}")
+    if (args.min_exact_match_rate is not None
+            and parser_metrics["exact_match_rate"] < args.min_exact_match_rate):
+        print(f"FAILED: exact-match rate is below {args.min_exact_match_rate:.1%}")
+        return 1
     return 0
 
 

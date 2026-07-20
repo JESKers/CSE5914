@@ -105,6 +105,10 @@ cached and capped by `VPIC_RECOMMEND_LOOKUPS` (default 3). LangChain then builds
 an evidence-only prompt for local Ollama; generated vehicle claims cite the
 Elasticsearch IDs as `[car:ID]`.
 
+Verified and not-found evidence is persisted for 30 days in the ignored runtime
+file `data/vpic_evidence_cache.json`, so backend restarts do not cause repeated
+NHTSA requests. API failures are not persisted.
+
 ---
 
 **Run:** these endpoints need the `cars` index seeded (see the main README:
