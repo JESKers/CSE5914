@@ -16,8 +16,8 @@ Plan: [docs/TIMEBOX2_PLAN.md](docs/TIMEBOX2_PLAN.md) · API: [docs/API_CONTRACT.
 /backend    FastAPI service — wires the API contract together (Eric)
 /search     Elasticsearch index, ingestion, query core (Kangjie)
 /rag        LLM hello-world, vector store, NL query parser (Jerry)
-/data       Kaggle data.csv + generated files (git-ignored) — except data/synth/,
-            the committed synthetic finance/rental/dealer tables the assistant uses
+/data       Committed Kaggle source CSV + cleaned Elasticsearch NDJSON +
+            synthetic finance/rental/dealer reference tables
 /docs       plan + API contract
 ```
 
@@ -45,9 +45,9 @@ cp .env.example .env
 # 2. Elasticsearch + Kibana + backend (build bakes the source into the image)
 docker compose up -d --build
 
-# 3. Seed the catalog: download data.csv from the Kaggle dataset linked above
-#    into data/, then clean + ingest (data/ is volume-mounted into the container):
-docker compose exec backend python -m search.clean_data   # data.csv -> cars_clean.json
+# 3. Seed the catalog. The source and cleaned files are included in the repo;
+#    rerun cleaning only after data/data.csv changes:
+docker compose exec backend python -m search.clean_data   # optional regeneration
 docker compose exec backend python -m search.ingest       # cars_clean.json -> ES
 
 # 4. (optional) snapshot vPIC model lists so /vpic/models answers offline:

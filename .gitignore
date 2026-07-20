@@ -13,12 +13,6 @@ milvus_demo.db
 *.sqlite
 *.sqlite3
 
-# Data
-data.csv
-data_small.csv
-data/
-!data/sample_data.csv
-
 # OS/editor
 .DS_Store
 .vscode/
@@ -35,11 +29,13 @@ evaluation/results/
 # Env / secrets
 .env
 
-# Data — downloaded from Kaggle / generated locally; never commit (too large
-# for GitHub's 100MB limit and fully reproducible via search.clean_data).
-# Keep the folder via .gitkeep but ignore everything else in it.
+# Data — commit the catalog inputs/outputs and synthetic reference tables, but
+# keep runtime artifacts and any unlisted local data out of Git.
 /data/*
 !/data/.gitkeep
+!/data/README.md
+!/data/data.csv
+!/data/cars_clean.json
 # ...except the hand-written synthetic reference tables the assistant needs
 # (small JSON, not reproducible from Kaggle data).
 !/data/synth
