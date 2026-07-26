@@ -39,6 +39,8 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(images, "CACHE_PATH", tmp_path / "vehicle_images.json")
     monkeypatch.setattr(images, "_cache", {"bmw m4": "https://img.example/m4.jpg"})
     agent._SESSIONS.clear()
+    agent._OLLAMA_SESSIONS.clear()
+    agent._OLLAMA_SHOP_FILTERS.clear()
 
 
 # --------------------------------------------------------------------------- #
@@ -214,10 +216,98 @@ def test_chat_tool_error_reaches_model_not_500(fake_llm):
     assert r.json()["events"][0]["is_error"] is True
 
 
-def test_chat_requires_api_key(monkeypatch):
+def test_chat_uses_ollama_without_api_key(monkeypatch):
     monkeypatch.setattr(settings, "anthropic_api_key", "")
+    monkeypatch.setattr(
+        agent,
+        "_chat_ollama",
+        lambda session_id, message: {
+            "reply": f"Local reply: {message}",
+            "events": [],
+        },
+    )
     r = client.post("/assistant/chat", json={"message": "hi"})
-    assert r.status_code == 503
+    assert r.status_code == 200
+    assert r.json()["reply"] == "Local reply: hi"
+
+
+def test_ollama_general_chat_omits_tools(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"message": {"role": "assistant", "content": "I can help with cars."}}
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return FakeResponse()
+
+    monkeypatch.setattr(agent.requests, "post", fake_post)
+    result = agent._chat_ollama("local-session", "Hello, what can you do?")
+
+    assert result["reply"] == "I can help with cars."
+    assert "tools" not in calls[0][1]["json"]
+    assert calls[0][1]["json"]["think"] is False
+
+
+def test_ollama_selects_only_relevant_tools():
+    rental_history = [{"role": "user", "content": "Rent an SUV this weekend"}]
+    mode = agent._ollama_mode(rental_history)
+    names = {tool["function"]["name"] for tool in agent._ollama_tools(mode)}
+
+    assert mode == "rental"
+    assert "search_rental_inventory" in names
+    assert "book_rental" in names
+    assert "place_purchase_order" not in names
+
+
+def test_ollama_latest_explicit_mode_can_switch_journeys():
+    history = [
+        {"role": "user", "content": "I need a rental next week"},
+        {"role": "assistant", "content": "Which city?"},
+        {"role": "user", "content": "Actually I want to buy an SUV"},
+    ]
+    assert agent._ollama_mode(history) == "buy"
+
+
+def test_grounded_shop_reply_uses_search_results():
+    reply, result = agent._grounded_shop_reply("Find a BMW coupe")
+
+    assert result["total"] == 1
+    assert "2016 BMW M4" in reply
+    assert "$60,000" in reply
+    assert "**I understood:**" in reply
+
+
+def test_grounded_shop_followup_remembers_and_refines_filters(monkeypatch):
+    seen = []
+
+    def capture(filters):
+        seen.append(filters)
+        return {"total": 1, "page": 1, "size": 20, "results": [dict(_SAMPLE_CAR)]}
+
+    monkeypatch.setattr(agent.search_service, "search", capture)
+    agent._grounded_shop_reply(
+        "Find a BMW coupe under $70000",
+        session_id="remember-me",
+    )
+    reply, result = agent._grounded_shop_reply(
+        "Show me the cheaper ones",
+        session_id="remember-me",
+    )
+
+    refined = seen[-1]
+    assert refined.make.casefold() == "bmw"
+    assert refined.vehicle_styles == ["Coupe"]
+    assert refined.price_max == 70000
+    assert refined.sort == "price"
+    assert refined.order == "asc"
+    assert refined.q is None
+    assert result["query_echo"]["make"].casefold() == "bmw"
+    assert "budget: up to $70,000" in reply
 
 
 # --------------------------------------------------------------------------- #

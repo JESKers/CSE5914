@@ -99,7 +99,7 @@ def _resolve_base_url() -> str:
 def get_ollama_config() -> dict:
     return {
         "base_url": _resolve_base_url(),
-        "chat_model": os.getenv("OLLAMA_CHAT_MODEL", "llama3.2"),
+        "chat_model": os.getenv("OLLAMA_CHAT_MODEL", "qwen3.5:4b"),
         "embedding_model": os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text"),
     }
 

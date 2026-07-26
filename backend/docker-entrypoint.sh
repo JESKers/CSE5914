@@ -14,7 +14,7 @@ for i in 1 2 3 4 5; do
     echo "Error: Elasticsearch is still unavailable after retries."
     exit 1
   fi
- done
+done
 
 if [ -f /app/data/cars_clean.json ]; then
   echo "Found /app/data/cars_clean.json. Skipping clean_data."

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # Local Ollama settings for Timebox 3 RAG / LLM
     ollama_base_url: str = "http://localhost:11434"
-    ollama_chat_model: str = "llama3.2"
+    ollama_chat_model: str = "qwen3.5:4b"
     ollama_embed_model: str = "nomic-embed-text"
 
     # Legacy Anthropic support (optional)

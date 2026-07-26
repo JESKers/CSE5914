@@ -19,9 +19,12 @@ endpoints are additive).
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import date, datetime
 from typing import Any, Callable
+
+import requests
 
 from search import search_service, vpic
 
@@ -32,6 +35,7 @@ from .schemas import SearchFilters
 MAX_AGENT_ITERATIONS = 12   # hard cap on model<->tool round trips per user turn
 MAX_RESULTS_TO_MODEL = 8    # keep tool payloads small so context stays lean
 MAX_RENTAL_UNITS = 10       # rental comparisons benefit from a few more options
+MAX_OLLAMA_HISTORY_MESSAGES = 24
 
 # Adaptive thinking is only accepted on Claude 4.6+ / Sonnet 5 / Fable models;
 # older ones (e.g. Haiku 4.5) reject the parameter with a 400, so gate it.
@@ -45,6 +49,8 @@ def _supports_adaptive_thinking(model: str) -> bool:
     return model.startswith(_ADAPTIVE_THINKING_PREFIXES)
 
 _SESSIONS: dict[str, list[dict[str, Any]]] = {}
+_OLLAMA_SESSIONS: dict[str, list[dict[str, Any]]] = {}
+_OLLAMA_SHOP_FILTERS: dict[str, SearchFilters] = {}
 
 
 # --------------------------------------------------------------------------- #
@@ -471,10 +477,12 @@ def new_session_id() -> str:
 
 def reset_session(session_id: str) -> None:
     _SESSIONS.pop(session_id, None)
+    _OLLAMA_SESSIONS.pop(session_id, None)
+    _OLLAMA_SHOP_FILTERS.pop(session_id, None)
 
 
-def chat(session_id: str, user_message: str) -> dict[str, Any]:
-    """One user turn: run the model<->tool loop to completion, return the reply."""
+def _chat_anthropic(session_id: str, user_message: str) -> dict[str, Any]:
+    """Run one turn through Claude's native tool-use API."""
     from anthropic import Anthropic  # lazy import, mirrors rag/parser.py
 
     client = Anthropic(api_key=settings.anthropic_api_key)
@@ -519,3 +527,353 @@ def chat(session_id: str, user_message: str) -> dict[str, Any]:
     if not reply:
         reply = "I ran out of steps before finishing — could you rephrase or narrow the request?"
     return {"reply": reply, "events": events}
+
+
+def _ollama_mode(history: list[dict[str, Any]]) -> str:
+    """Choose a compact local toolset from the conversation's user messages."""
+    user_messages = [
+        str(message.get("content") or "").casefold()
+        for message in history
+        if message.get("role") == "user"
+    ]
+
+    def classify(text: str) -> str | None:
+        if any(word in text for word in (
+            "rent", "rental", "pickup", "dropoff", "per day", "/day",
+        )):
+            return "rental"
+        if any(word in text for word in (
+            "buy", "purchase", "lease", "loan", "finance", "financing",
+            "test drive", "dealer", "tco",
+        )):
+            return "buy"
+        if any(word in text for word in (
+            "car", "vehicle", "suv", "sedan", "coupe", "truck", "wagon",
+            "hatchback", "minivan", "convertible",
+        )):
+            return "shop"
+        return None
+
+    # The newest explicit intent wins, allowing "actually, I want to buy" to
+    # switch away from a rental flow. Ambiguous follow-ups inherit prior mode.
+    if user_messages:
+        latest_mode = classify(user_messages[-1])
+        if latest_mode:
+            return latest_mode
+    for text in reversed(user_messages[:-1]):
+        previous_mode = classify(text)
+        if previous_mode:
+            return previous_mode
+    return "general"
+
+
+def _ollama_tools(mode: str) -> list[dict[str, Any]]:
+    """Translate only the mode-relevant tools to Ollama's function format."""
+    names_by_mode = {
+        "rental": {
+            "list_rental_locations", "search_rental_inventory",
+            "get_rental_addons", "quote_rental", "book_rental",
+        },
+        "buy": {
+            "search_cars", "get_listing", "quote_loan", "quote_lease",
+            "compare_tco", "get_dealer_and_slots", "book_test_drive",
+            "place_purchase_order",
+        },
+        "shop": {"search_cars", "get_listing"},
+        "general": set(),
+    }
+    allowed = names_by_mode[mode]
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            },
+        }
+        for tool in TOOLS
+        if tool["name"] in allowed
+    ]
+
+
+def _ollama_system_prompt(mode: str) -> str:
+    if mode == "general":
+        return (
+            "You are the JESKers car concierge. Answer naturally and briefly. "
+            "Explain that you can search cars, compare buying and leasing, quote "
+            "rentals, and help book rentals or test drives. Do not output JSON or "
+            "invent tool calls. Reply in the user's language."
+        )
+    common = (
+        f"You are the JESKers car concierge. Today is {date.today().isoformat()}. "
+        "Use only supplied tools and treat their results as authoritative. Never "
+        "invent vehicles, prices, availability, addresses, plates, appointments, "
+        "orders, or confirmation numbers. Never write a function call as plain "
+        "JSON. Use compact Markdown and reply in the user's language. "
+    )
+    if mode == "rental":
+        return common + (
+            "For rentals, collect or infer the city, pickup date, dropoff date, "
+            "seat count, class, and daily budget. Ask one concise question when "
+            "required dates or location are missing. Otherwise list locations, "
+            "search live inventory, compare suitable units, load requested add-ons, "
+            "and quote the best fit. Book only when the user clearly asks to reserve "
+            "or confirms the choice. A rental is confirmed only after book_rental "
+            "succeeds; copy every booking fact exactly from that result."
+        )
+    return common + (
+        "For buying or leasing, search the catalog before recommending a vehicle. "
+        "Use listing, loan, lease, and TCO tools for factual comparisons. Explain "
+        "the tradeoff in plain language. Book a test drive only when requested, and "
+        "place a purchase order only after an explicit request to buy now. An action "
+        "is confirmed only after its booking or order tool succeeds."
+    )
+
+
+def _is_shop_followup(message: str) -> bool:
+    """Recognize refinements that should inherit prior search constraints."""
+    return bool(re.search(
+        r"\b(?:cheaper|newer|older|faster|those|them|ones|instead|"
+        r"only|also|same|more|less|what about|how about)\b",
+        message.casefold(),
+    ))
+
+
+def _merge_shop_filters(
+    previous: SearchFilters | None,
+    current: SearchFilters,
+    *,
+    followup: bool,
+) -> SearchFilters:
+    if previous is None or not followup:
+        return current
+
+    merged = previous.model_dump(exclude_none=True)
+    current_data = current.model_dump(exclude_none=True)
+    explicit = current.model_fields_set
+
+    replacement_groups = (
+        {"make", "makes"},
+        {"model", "models"},
+        {"transmission_type", "transmission_types"},
+        {"vehicle_styles", "preferred_vehicle_styles"},
+        {"vehicle_sizes", "preferred_vehicle_sizes"},
+        {"driven_wheels", "preferred_driven_wheels"},
+        {"market_categories", "preferred_market_categories"},
+        {"powertrains", "preferred_powertrains"},
+    )
+    for group in replacement_groups:
+        if group & explicit:
+            for key in group:
+                merged.pop(key, None)
+
+    for key in explicit:
+        if key == "q":
+            # Comparative follow-ups such as "cheaper ones" are control
+            # language, not catalog keywords. Keep any earlier real keyword.
+            continue
+        if key in current_data:
+            merged[key] = current_data[key]
+    merged["page"] = 1
+    return SearchFilters(**merged)
+
+
+def _filter_interpretation(filters: SearchFilters) -> str:
+    """Render the important parsed constraints in plain language."""
+    details: list[str] = []
+    makes = filters.makes or ([filters.make] if filters.make else [])
+    models = filters.models or ([filters.model] if filters.model else [])
+    if makes:
+        details.append("make: " + " or ".join(makes))
+    if models:
+        details.append("model: " + " or ".join(models))
+    if filters.vehicle_styles:
+        details.append("style: " + " or ".join(filters.vehicle_styles))
+    if filters.year_min is not None and filters.year_max is not None:
+        details.append(
+            f"year: {filters.year_min}"
+            if filters.year_min == filters.year_max
+            else f"years: {filters.year_min}-{filters.year_max}"
+        )
+    elif filters.year_min is not None:
+        details.append(f"year: {filters.year_min} or newer")
+    elif filters.year_max is not None:
+        details.append(f"year: {filters.year_max} or older")
+    if filters.price_max is not None:
+        details.append(f"budget: up to ${filters.price_max:,.0f}")
+    if filters.price_min is not None:
+        details.append(f"minimum price: ${filters.price_min:,.0f}")
+
+    preference_labels = {
+        "affordability": "affordability",
+        "fuel_economy": "fuel economy",
+        "performance": "performance",
+        "newer": "newer models",
+        "family_space": "family space",
+        "cargo_space": "cargo space",
+        "all_weather": "all-weather capability",
+        "city_driving": "city driving",
+        "highway_driving": "highway driving",
+    }
+    preferences = [
+        preference_labels[p]
+        for p in filters.ranking_preferences or []
+        if p in preference_labels
+    ]
+    if preferences:
+        details.append("priorities: " + ", ".join(preferences))
+    if filters.sort != "popularity":
+        details.append(f"sorted by {filters.sort.replace('_', ' ')} {filters.order}")
+    return "; ".join(details) or "a broad catalog search"
+
+
+def _grounded_shop_reply(
+    user_message: str,
+    session_id: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Answer direct shopping searches from parsed Elasticsearch evidence."""
+    from rag.parser import parse_query
+
+    current = parse_query(user_message)
+    previous = _OLLAMA_SHOP_FILTERS.get(session_id) if session_id else None
+    filters = _merge_shop_filters(
+        previous,
+        current,
+        followup=_is_shop_followup(user_message),
+    )
+    if session_id:
+        _OLLAMA_SHOP_FILTERS[session_id] = filters
+    result = search_service.search(filters)
+    result["query_echo"] = filters.model_dump(exclude_none=True)
+    understood = _filter_interpretation(filters)
+    cars = result["results"][:4]
+    if not cars:
+        return (
+            f"**I understood:** {understood}.\n\n"
+            "I couldn't find an exact catalog match for those requirements. "
+            "Try increasing the budget, widening the year range, or changing "
+            "the body style.",
+            result,
+        )
+
+    lines = [
+        "| Vehicle | MSRP | MPG (city/highway) | Transmission |",
+        "| --- | ---: | ---: | --- |",
+    ]
+    for car in cars:
+        price = car.get("msrp")
+        price_text = f"${float(price):,.0f}" if price is not None else "N/A"
+        city = car.get("city_mpg")
+        highway = car.get("highway_mpg")
+        mpg_text = f"{city or 'N/A'} / {highway or 'N/A'}"
+        vehicle = f"{car.get('year')} {car.get('make')} {car.get('model')}"
+        lines.append(
+            f"| {vehicle} | {price_text} | {mpg_text} | "
+            f"{car.get('transmission_type') or 'N/A'} |"
+        )
+    intro = (
+        f"**I understood:** {understood}.\n\n"
+        f"I found **{result['total']}** matching vehicles. Here are the top options:"
+    )
+    warnings = filters.unsupported_preferences or []
+    warning = (
+        "\n\nCatalog note: I cannot verify " + ", ".join(warnings) + "."
+        if warnings else ""
+    )
+    return "\n".join([intro, "", *lines]) + warning, result
+
+
+def _trim_ollama_history(history: list[dict[str, Any]]) -> None:
+    """Bound local context growth while keeping complete recent turns."""
+    if len(history) <= MAX_OLLAMA_HISTORY_MESSAGES:
+        return
+    history[:] = history[-MAX_OLLAMA_HISTORY_MESSAGES:]
+    while history and history[0].get("role") == "tool":
+        history.pop(0)
+
+
+def _chat_ollama(session_id: str, user_message: str) -> dict[str, Any]:
+    """Run one turn through local Ollama while preserving the agent tools."""
+    history = _OLLAMA_SESSIONS.setdefault(session_id, [])
+    history.append({"role": "user", "content": user_message})
+    events: list[dict[str, Any]] = []
+    reply = ""
+    base_url = settings.ollama_base_url.rstrip("/")
+    mode = _ollama_mode(history)
+    tools = _ollama_tools(mode)
+
+    if mode == "shop":
+        reply, result = _grounded_shop_reply(user_message, session_id)
+        history.append({"role": "assistant", "content": reply})
+        _trim_ollama_history(history)
+        return {
+            "reply": reply,
+            "events": [{
+                "tool": "search_cars",
+                "summary": f"Searched catalog: {result['total']} matches",
+                "is_error": False,
+            }],
+        }
+
+    for _ in range(MAX_AGENT_ITERATIONS):
+        payload: dict[str, Any] = {
+            "model": settings.ollama_chat_model or "qwen3.5:4b",
+            "messages": [
+                {"role": "system", "content": _ollama_system_prompt(mode)},
+                *history,
+            ],
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0},
+        }
+        if tools:
+            payload["tools"] = tools
+        response = requests.post(
+            f"{base_url}/api/chat",
+            json=payload,
+            timeout=180,
+        )
+        response.raise_for_status()
+        message = response.json().get("message") or {}
+        assistant_message = {
+            "role": "assistant",
+            "content": str(message.get("content") or ""),
+        }
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            assistant_message["tool_calls"] = tool_calls
+        history.append(assistant_message)
+
+        if not tool_calls:
+            reply = assistant_message["content"].strip()
+            break
+
+        for call in tool_calls:
+            function = call.get("function") or {}
+            name = str(function.get("name") or "")
+            args = function.get("arguments") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            result_json, summary, is_error = _run_tool(name, dict(args))
+            events.append({"tool": name, "summary": summary, "is_error": is_error})
+            history.append({
+                "role": "tool",
+                "tool_name": name,
+                "content": result_json,
+            })
+
+    if not reply:
+        reply = "I ran out of steps before finishing — could you rephrase or narrow the request?"
+    _trim_ollama_history(history)
+    return {"reply": reply, "events": events}
+
+
+def chat(session_id: str, user_message: str) -> dict[str, Any]:
+    """Run one agent turn, preferring Claude and falling back to local Ollama."""
+    if settings.anthropic_api_key:
+        return _chat_anthropic(session_id, user_message)
+    return _chat_ollama(session_id, user_message)

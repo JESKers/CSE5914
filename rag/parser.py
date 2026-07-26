@@ -874,13 +874,23 @@ def parse_query(query: str) -> SearchFilters:
     filters.update(market)
 
     ranking = _detect_ranking_preferences(q) + extra_rank
-    if re.search(r"\b(?:cheapest|lowest[- ]price|least\s+expensive)\b", q):
+    if re.search(
+        r"\b(?:cheapest|cheaper|lowest[- ]price|lower[- ]priced|least\s+expensive)\b",
+        q,
+    ):
         filters.update(sort="price", order="asc")
-    elif re.search(r"\b(?:most\s+fuel[- ]efficient|best\s+mpg|highest\s+mpg)\b", q):
+    elif re.search(
+        r"\b(?:most|more)\s+fuel[- ]efficient\b|\b(?:best|higher|highest)\s+mpg\b",
+        q,
+    ):
         filters.update(sort="combined_mpg", order="desc")
-    elif re.search(r"\b(?:fastest|most\s+powerful|highest\s+horsepower)\b", q):
+    elif re.search(
+        r"\b(?:fastest|faster|(?:most|more)\s+powerful|"
+        r"(?:higher|highest)\s+horsepower)\b",
+        q,
+    ):
         filters.update(sort="hp", order="desc")
-    elif re.search(r"\b(?:newest|latest\s+model)\b", q):
+    elif re.search(r"\b(?:newest|newer|latest\s+model)\b", q):
         filters.update(sort="year", order="desc")
 
     if ranking:

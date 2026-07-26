@@ -568,15 +568,11 @@ def store_order_history():
 def assistant_chat(req: ChatRequest):
     """One conversational turn with the buy/rent agent.
 
-    The agent runs a Claude tool-use loop (see backend/app/agent.py): rentals
-    are handled end-to-end (search -> add-ons -> insurance -> booking with a
-    confirmation number); purchases get TCO/finance analysis, a test-drive
-    appointment and a dealer handoff. Conversation state is held server-side
-    per session_id.
+    The agent prefers Claude when an Anthropic key is configured and otherwise
+    uses local Ollama. Both providers share the same search, quote, booking and
+    dealer tools. Conversation state is held server-side per session_id.
     """
-    if not settings.anthropic_api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
-    from . import agent  # lazy import: only /assistant needs anthropic
+    from . import agent
 
     session_id = req.session_id or agent.new_session_id()
     try:
