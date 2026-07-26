@@ -30,14 +30,30 @@ parse_query = rag_parser.parse_query
 
 
 FILTER_FIELDS = (
-    "make", "model", "year_min", "year_max", "price_min", "price_max",
-    "hp_min", "hp_max", "engine_fuel_type", "transmission_type",
+    "make", "model", "makes", "models", "excluded_makes", "excluded_models",
+    "year_min", "year_max", "price_min", "price_max", "hp_min", "hp_max",
+    "engine_cylinders_min", "engine_cylinders_max",
+    "number_of_doors_min", "number_of_doors_max",
+    "city_mpg_min", "city_mpg_max", "highway_mpg_min", "highway_mpg_max",
+    "combined_mpg_min", "combined_mpg_max",
+    "engine_fuel_type", "transmission_type", "transmission_types",
+    "excluded_transmission_types", "powertrains", "excluded_powertrains",
+    "vehicle_styles", "preferred_vehicle_styles", "excluded_vehicle_styles",
+    "vehicle_sizes", "preferred_vehicle_sizes",
+    "driven_wheels", "preferred_driven_wheels", "excluded_driven_wheels",
+    "market_categories", "preferred_market_categories", "excluded_market_categories",
+    "preferred_price_max", "preferred_year_min", "preferred_hp_min",
+    "preferred_combined_mpg_min", "preferred_makes", "preferred_powertrains",
+    "ranking_preferences", "unsupported_preferences",
 )
 
 
 def _equal(actual, expected) -> bool:
     if isinstance(actual, str) and isinstance(expected, str):
         return actual.casefold() == expected.casefold()
+    if isinstance(actual, list) and isinstance(expected, list):
+        normalize = lambda value: value.casefold() if isinstance(value, str) else value
+        return sorted(map(normalize, actual), key=str) == sorted(map(normalize, expected), key=str)
     return actual == expected
 
 
@@ -110,6 +126,16 @@ def _constraint_violations(car: dict, filters: dict) -> list[str]:
         ("price_max", "msrp", lambda a, w: a <= w),
         ("hp_min", "engine_hp", lambda a, w: a >= w),
         ("hp_max", "engine_hp", lambda a, w: a <= w),
+        ("engine_cylinders_min", "engine_cylinders", lambda a, w: a >= w),
+        ("engine_cylinders_max", "engine_cylinders", lambda a, w: a <= w),
+        ("number_of_doors_min", "number_of_doors", lambda a, w: a >= w),
+        ("number_of_doors_max", "number_of_doors", lambda a, w: a <= w),
+        ("city_mpg_min", "city_mpg", lambda a, w: a >= w),
+        ("city_mpg_max", "city_mpg", lambda a, w: a <= w),
+        ("highway_mpg_min", "highway_mpg", lambda a, w: a >= w),
+        ("highway_mpg_max", "highway_mpg", lambda a, w: a <= w),
+        ("combined_mpg_min", "combined_mpg", lambda a, w: a >= w),
+        ("combined_mpg_max", "combined_mpg", lambda a, w: a <= w),
     )
     for filter_key, car_key, predicate in comparisons:
         if filter_key in filters:
@@ -121,6 +147,56 @@ def _constraint_violations(car: dict, filters: dict) -> list[str]:
             violations.append(field)
     if "engine_fuel_type" in filters and str(filters["engine_fuel_type"]).casefold() not in str(car.get("engine_fuel_type", "")).casefold():
         violations.append("engine_fuel_type")
+    for filter_key, car_key in (
+        ("makes", "make"), ("models", "model"),
+        ("transmission_types", "transmission_type"),
+        ("vehicle_styles", "vehicle_style"), ("vehicle_sizes", "vehicle_size"),
+        ("driven_wheels", "driven_wheels"),
+    ):
+        if filter_key in filters and str(car.get(car_key, "")).casefold() not in {
+            str(value).casefold() for value in filters[filter_key]
+        }:
+            violations.append(filter_key)
+    for filter_key, car_key in (
+        ("excluded_makes", "make"), ("excluded_models", "model"),
+        ("excluded_transmission_types", "transmission_type"),
+        ("excluded_vehicle_styles", "vehicle_style"),
+        ("excluded_driven_wheels", "driven_wheels"),
+    ):
+        if filter_key in filters and str(car.get(car_key, "")).casefold() in {
+            str(value).casefold() for value in filters[filter_key]
+        }:
+            violations.append(filter_key)
+    category = str(car.get("market_category", "")).casefold()
+    if "market_categories" in filters and not any(
+        str(value).casefold() in category for value in filters["market_categories"]
+    ):
+        violations.append("market_categories")
+    if "excluded_market_categories" in filters and any(
+        str(value).casefold() in category
+        for value in filters["excluded_market_categories"]
+    ):
+        violations.append("excluded_market_categories")
+
+    def matches_powertrain(value: str) -> bool:
+        fuel = str(car.get("engine_fuel_type", "")).casefold()
+        normalized = str(value).casefold()
+        if normalized == "hybrid":
+            return "hybrid" in category
+        if normalized == "gasoline":
+            return "unleaded" in fuel
+        if normalized == "flex-fuel":
+            return "flex-fuel" in fuel
+        return normalized in fuel
+
+    if "powertrains" in filters and not any(
+        matches_powertrain(value) for value in filters["powertrains"]
+    ):
+        violations.append("powertrains")
+    if "excluded_powertrains" in filters and any(
+        matches_powertrain(value) for value in filters["excluded_powertrains"]
+    ):
+        violations.append("excluded_powertrains")
     return violations
 
 

@@ -11,7 +11,10 @@ _MATCH = {
     "id": "match", "make": "Ford", "model": "Mustang", "year": 2018,
     "msrp": 42000.0, "engine_hp": 460, "engine_fuel_type": "premium unleaded",
     "transmission_type": "MANUAL", "vehicle_style": "Coupe",
-    "highway_mpg": 25, "city_mpg": 15,
+    "engine_cylinders": 8, "driven_wheels": "all wheel drive",
+    "number_of_doors": 2, "market_category": "Performance",
+    "vehicle_size": "Midsize", "highway_mpg": 25, "city_mpg": 15,
+    "combined_mpg": 19,
 }
 
 
@@ -106,3 +109,35 @@ def test_recommend_labels_relaxed_alternatives(monkeypatch):
     assert body["results"] == []
     assert body["alternatives"][0]["relaxed_constraints"] == ["price_max"]
     assert "relaxed price_max" in body["warnings"][0]
+
+
+def test_complex_query_flows_to_structured_search_and_warns_on_unknown_data(
+    monkeypatch,
+):
+    _stub_grounding(monkeypatch)
+    captured = {}
+    monkeypatch.setattr(main.search_service, "models", lambda make: ["Mustang"])
+
+    def fake_search(filters):
+        captured["filters"] = filters
+        return {"results": [_MATCH], "total": 1, "page": 1, "size": filters.size}
+
+    monkeypatch.setattr(main.search_service, "search", fake_search)
+    body = client.post(
+        "/recommend",
+        json={"query": (
+            "Ford or Mazda AWD coupe with at least 18 combined mpg, "
+            "no automatic, preferably under $45k, with CarPlay"
+        )},
+    ).json()
+
+    filters = captured["filters"]
+    assert filters.makes == ["ford", "mazda"]
+    assert filters.driven_wheels == ["all wheel drive"]
+    assert filters.vehicle_styles == ["Coupe"]
+    assert filters.combined_mpg_min == 18
+    assert filters.excluded_transmission_types == ["AUTOMATIC"]
+    assert filters.preferred_price_max == 45000
+    assert filters.unsupported_preferences == ["installed features"]
+    assert body["results"][0]["id"] == "match"
+    assert "installed features" in body["warnings"][0]

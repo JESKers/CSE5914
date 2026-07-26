@@ -148,7 +148,17 @@ def clean(input_path: Path) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].round().astype("Int64")
 
-    # 5. combined free-text field for keyword search
+    # 5. EPA-style combined MPG. The harmonic 55% city / 45% highway formula
+    # is used instead of an arithmetic mean so natural-language queries such as
+    # "at least 30 mpg combined" can be enforced against a stored field.
+    if {"city_mpg", "highway_mpg"}.issubset(df.columns):
+        valid = (df["city_mpg"] > 0) & (df["highway_mpg"] > 0)
+        df.loc[valid, "combined_mpg"] = (
+            1 / (0.55 / df.loc[valid, "city_mpg"] + 0.45 / df.loc[valid, "highway_mpg"])
+        ).round()
+        df["combined_mpg"] = df["combined_mpg"].astype("Int64")
+
+    # 6. combined free-text field for keyword search
     text_parts = [c for c in ["make", "model", "market_category", "vehicle_style", "description", "url"] if c in df.columns]
     if text_parts:
         text_df = df[text_parts].copy()

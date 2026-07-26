@@ -149,7 +149,8 @@ def recommend(req: RecommendRequest):
             query_echo={"query": req.query, "parsed_filters": filters.model_dump(exclude_none=True)},
             message="Resolve the contradictory constraints before searching.",
             narrative=narrative, generation_mode="deterministic",
-            sources=["Elasticsearch vehicle catalog", "NHTSA vPIC"], warnings=conflicts,
+            sources=["Elasticsearch vehicle catalog", "NHTSA vPIC"],
+            warnings=conflicts + _unsupported_warnings(filters),
             request_id=request_id,
             timings_ms={"parse": round((parsed_at - started) * 1000, 3)},
         )
@@ -209,7 +210,7 @@ def recommend(req: RecommendRequest):
         narrative=narrative,
         generation_mode=generation_mode,
         sources=["Elasticsearch vehicle catalog", "NHTSA vPIC"],
-        warnings=relaxation_warnings,
+        warnings=relaxation_warnings + _unsupported_warnings(filters),
         recommended_vehicle_ids=structured["recommended_vehicle_ids"],
         comparison_points=structured["comparison_points"],
         request_id=request_id,
@@ -223,17 +224,37 @@ def _filter_conflicts(filters: SearchFilters) -> list[str]:
         (filters.year_min, filters.year_max, "year"),
         (filters.price_min, filters.price_max, "price"),
         (filters.hp_min, filters.hp_max, "horsepower"),
+        (filters.engine_cylinders_min, filters.engine_cylinders_max, "cylinder count"),
+        (filters.number_of_doors_min, filters.number_of_doors_max, "door count"),
+        (filters.city_mpg_min, filters.city_mpg_max, "city MPG"),
+        (filters.highway_mpg_min, filters.highway_mpg_max, "highway MPG"),
+        (filters.combined_mpg_min, filters.combined_mpg_max, "combined MPG"),
     ):
         if low is not None and high is not None and low > high:
             conflicts.append(f"{label} minimum {low} exceeds maximum {high}")
     return conflicts
 
 
+def _unsupported_warnings(filters: SearchFilters) -> list[str]:
+    if not filters.unsupported_preferences:
+        return []
+    labels = ", ".join(filters.unsupported_preferences)
+    return [
+        "The catalog cannot directly verify these requested details: "
+        f"{labels}. They were not used as hard filters."
+    ]
+
+
 def _relaxed_recommendations(filters: SearchFilters) -> tuple[list[RecommendationResult], list[str]]:
     """Find near matches by dropping one constraint, never mixing them with exact results."""
     relaxable = [
         "q", "price_max", "price_min", "hp_min", "hp_max", "year_min", "year_max",
-        "transmission_type", "engine_fuel_type",
+        "transmission_type", "transmission_types", "engine_fuel_type", "powertrains",
+        "make", "makes", "model", "models", "vehicle_styles", "vehicle_sizes",
+        "driven_wheels", "market_categories", "engine_cylinders_min",
+        "engine_cylinders_max", "number_of_doors_min", "number_of_doors_max",
+        "city_mpg_min", "city_mpg_max", "highway_mpg_min", "highway_mpg_max",
+        "combined_mpg_min", "combined_mpg_max",
     ]
     for field in relaxable:
         if getattr(filters, field) is None:
@@ -267,6 +288,48 @@ def _satisfies_hard_constraints(car: dict, filters: SearchFilters) -> bool:
         (filters.hp_min, car.get("engine_hp"), lambda actual, wanted: actual >= wanted),
         (filters.hp_max, car.get("engine_hp"), lambda actual, wanted: actual <= wanted),
         (
+            filters.engine_cylinders_min,
+            car.get("engine_cylinders"),
+            lambda actual, wanted: actual >= wanted,
+        ),
+        (
+            filters.engine_cylinders_max,
+            car.get("engine_cylinders"),
+            lambda actual, wanted: actual <= wanted,
+        ),
+        (
+            filters.number_of_doors_min,
+            car.get("number_of_doors"),
+            lambda actual, wanted: actual >= wanted,
+        ),
+        (
+            filters.number_of_doors_max,
+            car.get("number_of_doors"),
+            lambda actual, wanted: actual <= wanted,
+        ),
+        (filters.city_mpg_min, car.get("city_mpg"), lambda actual, wanted: actual >= wanted),
+        (filters.city_mpg_max, car.get("city_mpg"), lambda actual, wanted: actual <= wanted),
+        (
+            filters.highway_mpg_min,
+            car.get("highway_mpg"),
+            lambda actual, wanted: actual >= wanted,
+        ),
+        (
+            filters.highway_mpg_max,
+            car.get("highway_mpg"),
+            lambda actual, wanted: actual <= wanted,
+        ),
+        (
+            filters.combined_mpg_min,
+            car.get("combined_mpg"),
+            lambda actual, wanted: actual >= wanted,
+        ),
+        (
+            filters.combined_mpg_max,
+            car.get("combined_mpg"),
+            lambda actual, wanted: actual <= wanted,
+        ),
+        (
             filters.transmission_type,
             car.get("transmission_type"),
             lambda actual, wanted: str(actual).lower() == str(wanted).lower(),
@@ -280,7 +343,64 @@ def _satisfies_hard_constraints(car: dict, filters: SearchFilters) -> bool:
     for wanted, actual, predicate in checks:
         if wanted is not None and (actual is None or not predicate(actual, wanted)):
             return False
+
+    def matches_any(actual, wanted) -> bool:
+        return any(str(actual).casefold() == str(value).casefold() for value in wanted or [])
+
+    def contains_any(actual, wanted) -> bool:
+        text = str(actual).casefold()
+        return any(str(value).casefold() in text for value in wanted or [])
+
+    for field, actual in (
+        (filters.makes, car.get("make")),
+        (filters.models, car.get("model")),
+        (filters.transmission_types, car.get("transmission_type")),
+        (filters.vehicle_styles, car.get("vehicle_style")),
+        (filters.vehicle_sizes, car.get("vehicle_size")),
+        (filters.driven_wheels, car.get("driven_wheels")),
+    ):
+        if field and (actual is None or not matches_any(actual, field)):
+            return False
+    if filters.market_categories and not contains_any(
+        car.get("market_category"), filters.market_categories
+    ):
+        return False
+
+    for field, actual in (
+        (filters.excluded_makes, car.get("make")),
+        (filters.excluded_models, car.get("model")),
+        (filters.excluded_transmission_types, car.get("transmission_type")),
+        (filters.excluded_vehicle_styles, car.get("vehicle_style")),
+        (filters.excluded_driven_wheels, car.get("driven_wheels")),
+    ):
+        if field and actual is not None and matches_any(actual, field):
+            return False
+    if filters.excluded_market_categories and contains_any(
+        car.get("market_category"), filters.excluded_market_categories
+    ):
+        return False
+    if filters.powertrains and not any(
+        _car_matches_powertrain(car, value) for value in filters.powertrains
+    ):
+        return False
+    if filters.excluded_powertrains and any(
+        _car_matches_powertrain(car, value) for value in filters.excluded_powertrains
+    ):
+        return False
     return True
+
+
+def _car_matches_powertrain(car: dict, value: str) -> bool:
+    fuel = str(car.get("engine_fuel_type", "")).casefold()
+    category = str(car.get("market_category", "")).casefold()
+    normalized = value.casefold()
+    if normalized == "hybrid":
+        return "hybrid" in category
+    if normalized == "gasoline":
+        return "unleaded" in fuel
+    if normalized == "flex-fuel":
+        return "flex-fuel" in fuel
+    return normalized in fuel
 
 
 def _recommendation_reasons(car: dict, filters: SearchFilters) -> list[str]:
@@ -300,6 +420,27 @@ def _recommendation_reasons(car: dict, filters: SearchFilters) -> list[str]:
         reasons.append(f"Has the requested {car['transmission_type'].lower()} transmission")
     if filters.engine_fuel_type and car.get("engine_fuel_type"):
         reasons.append(f"Fuel type: {car['engine_fuel_type']}")
+    if filters.makes:
+        reasons.append(f"Make {car['make']} is one of the requested options")
+    if filters.vehicle_styles and car.get("vehicle_style"):
+        reasons.append(f"Requested body style: {car['vehicle_style']}")
+    if filters.driven_wheels and car.get("driven_wheels"):
+        reasons.append(f"Requested drivetrain: {car['driven_wheels']}")
+    if filters.engine_cylinders_min is not None and car.get("engine_cylinders") is not None:
+        reasons.append(
+            f"{car['engine_cylinders']} cylinders meets the "
+            f"{filters.engine_cylinders_min}-cylinder minimum"
+        )
+    if filters.combined_mpg_min is not None and car.get("combined_mpg") is not None:
+        reasons.append(
+            f"{car['combined_mpg']} combined MPG meets the "
+            f"{filters.combined_mpg_min} MPG minimum"
+        )
+    if filters.highway_mpg_min is not None and car.get("highway_mpg") is not None:
+        reasons.append(
+            f"{car['highway_mpg']} highway MPG meets the "
+            f"{filters.highway_mpg_min} MPG minimum"
+        )
     if filters.q and car.get("vehicle_style"):
         reasons.append(f"Retrieved for preference match; body style is {car['vehicle_style']}")
     return reasons or ["Retrieved from the vehicle catalog for this request"]

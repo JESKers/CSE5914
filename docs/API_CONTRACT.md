@@ -106,8 +106,15 @@ Body:
 ```
 
 The deterministic parser turns the query into structured filters, then runs the
-same Elasticsearch search. Hard constraints are verified again before a car is
-returned. `query_echo` carries the original query and parsed filters, while each
+same Elasticsearch search. It distinguishes mandatory constraints, ranking-only
+preferences, OR alternatives, and explicit exclusions. Supported fields include
+price, year, horsepower, cylinders, doors, city/highway/combined MPG,
+makes/models, body styles, sizes, drivetrains, transmissions, powertrains, and
+market categories. Hard constraints are verified again before a car is
+returned. Requirements absent from the catalog, such as towing, mileage,
+installed features, color, or safety ratings, are retained in
+`unsupported_preferences` and surfaced as warnings rather than silently
+ignored. `query_echo` carries the original query and parsed filters, while each
 result includes evidence-based `match_reasons`:
 
 ```json

@@ -8,7 +8,7 @@ def test_labeled_query_set_is_large_unique_and_well_formed():
     cases = json.loads(Path("evaluation/queries.json").read_text(encoding="utf-8"))
     ids = [case["id"] for case in cases]
 
-    assert len(cases) >= 100
+    assert len(cases) >= 300
     assert len(ids) == len(set(ids))
     for case in cases:
         assert case["query"].strip()
@@ -29,10 +29,43 @@ def test_parser_evaluation_counts_exact_matches_and_mismatches():
 
 
 def test_constraint_violation_check_covers_numeric_and_exact_fields():
-    car = {"make": "Ford", "year": 2018, "msrp": 52000, "engine_hp": 250}
-    filters = {"make": "ford", "year_min": 2020, "price_max": 50000, "hp_min": 300}
+    car = {
+        "make": "Ford", "year": 2018, "msrp": 52000, "engine_hp": 250,
+        "driven_wheels": "rear wheel drive", "number_of_doors": 2,
+        "combined_mpg": 20,
+    }
+    filters = {
+        "make": "ford", "year_min": 2020, "price_max": 50000, "hp_min": 300,
+        "driven_wheels": ["all wheel drive"], "number_of_doors_min": 4,
+        "combined_mpg_min": 30,
+    }
 
-    assert _constraint_violations(car, filters) == ["year_min", "price_max", "hp_min"]
+    assert _constraint_violations(car, filters) == [
+        "year_min", "price_max", "hp_min", "number_of_doors_min",
+        "combined_mpg_min", "driven_wheels",
+    ]
+
+
+def test_constraint_violation_check_covers_categories_and_powertrains():
+    car = {
+        "engine_fuel_type": "premium unleaded",
+        "market_category": "Luxury,Performance",
+    }
+
+    assert _constraint_violations(
+        car,
+        {
+            "market_categories": ["Hybrid"],
+            "excluded_market_categories": ["Luxury"],
+            "powertrains": ["diesel"],
+            "excluded_powertrains": ["gasoline"],
+        },
+    ) == [
+        "market_categories",
+        "excluded_market_categories",
+        "powertrains",
+        "excluded_powertrains",
+    ]
 
 
 def test_relevance_label_checks_top_result_attributes():

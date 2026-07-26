@@ -112,16 +112,20 @@ Owner-specific extras: `pip install -r search/requirements.txt` (Jupyter profili
 
 ## Recommendation evaluation
 
-The labeled benchmark contains 124 natural-language requests covering prices,
-years, horsepower, makes/models, powertrains, combined constraints, vague
-preferences, misspellings, negation, contradictions, and adversarial input.
+The labeled benchmark contains 348 natural-language requests covering hard
+constraints, soft preferences, alternatives, exclusions, colloquial and
+flexible budgets, years, horsepower, cylinders, doors, MPG, makes/models,
+styles, sizes, drivetrains, transmissions, powertrains, unsupported
+requirements, misspellings, contradictions, and adversarial input.
 
 ```bash
 python evaluation/run_evaluation.py
 python evaluation/run_evaluation.py --api-url http://localhost:8000
 ```
 
-See [evaluation/README.md](evaluation/README.md) for metrics and report details.
+See [evaluation/README.md](evaluation/README.md) for metrics and report details,
+and [docs/QUERY_LANGUAGE_RESEARCH.md](docs/QUERY_LANGUAGE_RESEARCH.md) for the
+Internet-derived query taxonomy and dataset boundaries.
 
 ## Branch strategy
 

@@ -12,16 +12,63 @@ from pydantic import BaseModel, Field
 
 
 class SearchFilters(BaseModel):
+    # Backward-compatible single-value fields used by the original API.
     make: Optional[str] = None
     model: Optional[str] = None
+    engine_fuel_type: Optional[str] = None
+    transmission_type: Optional[str] = None
+
+    # OR-groups and exclusions used by natural-language recommendation queries.
+    makes: Optional[list[str]] = None
+    models: Optional[list[str]] = None
+    excluded_makes: Optional[list[str]] = None
+    excluded_models: Optional[list[str]] = None
+    transmission_types: Optional[list[str]] = None
+    excluded_transmission_types: Optional[list[str]] = None
+    powertrains: Optional[list[str]] = None
+    excluded_powertrains: Optional[list[str]] = None
+    vehicle_styles: Optional[list[str]] = None
+    preferred_vehicle_styles: Optional[list[str]] = None
+    excluded_vehicle_styles: Optional[list[str]] = None
+    vehicle_sizes: Optional[list[str]] = None
+    preferred_vehicle_sizes: Optional[list[str]] = None
+    driven_wheels: Optional[list[str]] = None
+    preferred_driven_wheels: Optional[list[str]] = None
+    excluded_driven_wheels: Optional[list[str]] = None
+    market_categories: Optional[list[str]] = None
+    preferred_market_categories: Optional[list[str]] = None
+    excluded_market_categories: Optional[list[str]] = None
+
+    # Numeric hard constraints supported by the committed catalog.
     year_min: Optional[int] = None
     year_max: Optional[int] = None
     price_min: Optional[float] = None
     price_max: Optional[float] = None
     hp_min: Optional[int] = None
     hp_max: Optional[int] = None
-    engine_fuel_type: Optional[str] = None
-    transmission_type: Optional[str] = None
+    engine_cylinders_min: Optional[int] = None
+    engine_cylinders_max: Optional[int] = None
+    number_of_doors_min: Optional[int] = None
+    number_of_doors_max: Optional[int] = None
+    city_mpg_min: Optional[int] = None
+    city_mpg_max: Optional[int] = None
+    highway_mpg_min: Optional[int] = None
+    highway_mpg_max: Optional[int] = None
+    combined_mpg_min: Optional[int] = None
+    combined_mpg_max: Optional[int] = None
+
+    # Explicitly soft constraints affect ranking but never remove candidates.
+    preferred_price_max: Optional[float] = None
+    preferred_year_min: Optional[int] = None
+    preferred_hp_min: Optional[int] = None
+    preferred_combined_mpg_min: Optional[int] = None
+    preferred_makes: Optional[list[str]] = None
+    preferred_powertrains: Optional[list[str]] = None
+    ranking_preferences: Optional[list[str]] = None
+
+    # Requirements such as towing, safety features, listing mileage, or color
+    # are retained for transparent warnings instead of being silently ignored.
+    unsupported_preferences: Optional[list[str]] = None
     q: Optional[str] = Field(default=None, description="free-text keywords")
 
     # paging / sorting
@@ -38,11 +85,17 @@ class CarResult(BaseModel):
     year: Optional[int] = None
     msrp: Optional[float] = None
     engine_hp: Optional[int] = None
+    engine_cylinders: Optional[int] = None
     engine_fuel_type: Optional[str] = None
     transmission_type: Optional[str] = None
+    driven_wheels: Optional[str] = None
+    number_of_doors: Optional[int] = None
+    market_category: Optional[str] = None
+    vehicle_size: Optional[str] = None
     vehicle_style: Optional[str] = None
     highway_mpg: Optional[int] = None
     city_mpg: Optional[int] = None
+    combined_mpg: Optional[int] = None
 
 
 class SearchResponse(BaseModel):

@@ -14,19 +14,141 @@ SORT_FIELDS = {
     "price": "msrp",
     "year": "year",
     "hp": "engine_hp",
+    "city_mpg": "city_mpg",
+    "highway_mpg": "highway_mpg",
+    "combined_mpg": "combined_mpg",
+    "cylinders": "engine_cylinders",
     "popularity": "popularity",
 }
 
 # fields returned for each car hit
 RESULT_FIELDS = [
-    "make", "model", "year", "msrp", "engine_hp", "engine_fuel_type",
-    "transmission_type", "vehicle_style", "highway_mpg", "city_mpg",
+    "make", "model", "year", "msrp", "engine_hp", "engine_cylinders",
+    "engine_fuel_type", "transmission_type", "driven_wheels",
+    "number_of_doors", "market_category", "vehicle_size", "vehicle_style",
+    "highway_mpg", "city_mpg", "combined_mpg",
 ]
+
+
+def _case_insensitive_any(field: str, values: list[str]) -> dict:
+    """Match any keyword value without depending on source capitalization."""
+    return {"bool": {
+        "should": [
+            {"term": {field: {"value": value, "case_insensitive": True}}}
+            for value in values
+        ],
+        "minimum_should_match": 1,
+    }}
+
+
+def _contains_any(field: str, values: list[str]) -> dict:
+    """Match comma-delimited catalog categories such as Luxury,Performance."""
+    return {"bool": {
+        "should": [
+            {"wildcard": {field: {"value": f"*{value}*", "case_insensitive": True}}}
+            for value in values
+        ],
+        "minimum_should_match": 1,
+    }}
+
+
+def _powertrain_any(values: list[str]) -> dict:
+    clauses = []
+    for value in values:
+        normalized = value.casefold()
+        if normalized == "hybrid":
+            clauses.append({"wildcard": {
+                "market_category": {"value": "*Hybrid*", "case_insensitive": True},
+            }})
+        elif normalized == "gasoline":
+            clauses.append({"wildcard": {
+                "engine_fuel_type": {"value": "*unleaded*", "case_insensitive": True},
+            }})
+        elif normalized == "flex-fuel":
+            clauses.append({"wildcard": {
+                "engine_fuel_type": {"value": "*flex-fuel*", "case_insensitive": True},
+            }})
+        else:
+            clauses.append({"wildcard": {
+                "engine_fuel_type": {"value": f"*{normalized}*", "case_insensitive": True},
+            }})
+    return {"bool": {"should": clauses, "minimum_should_match": 1}}
+
+
+def _preference_clauses(f) -> list[dict]:
+    """Translate soft preferences into boosts; these never remove a result."""
+    should: list[dict] = []
+    for field, value in (
+        ("msrp", f.preferred_price_max),
+        ("year", f.preferred_year_min),
+        ("engine_hp", f.preferred_hp_min),
+        ("combined_mpg", f.preferred_combined_mpg_min),
+    ):
+        if value is None:
+            continue
+        operator = "lte" if field == "msrp" else "gte"
+        should.append({"range": {field: {operator: value, "boost": 3}}})
+
+    if f.preferred_makes:
+        clause = _case_insensitive_any("make", f.preferred_makes)
+        clause["bool"]["boost"] = 3
+        should.append(clause)
+    if f.preferred_vehicle_styles:
+        clause = _case_insensitive_any("vehicle_style", f.preferred_vehicle_styles)
+        clause["bool"]["boost"] = 2
+        should.append(clause)
+    if f.preferred_vehicle_sizes:
+        clause = _case_insensitive_any("vehicle_size", f.preferred_vehicle_sizes)
+        clause["bool"]["boost"] = 2
+        should.append(clause)
+    if f.preferred_driven_wheels:
+        clause = _case_insensitive_any("driven_wheels", f.preferred_driven_wheels)
+        clause["bool"]["boost"] = 2
+        should.append(clause)
+    if f.preferred_market_categories:
+        clause = _contains_any("market_category", f.preferred_market_categories)
+        clause["bool"]["boost"] = 2
+        should.append(clause)
+    if f.preferred_powertrains:
+        clause = _powertrain_any(f.preferred_powertrains)
+        clause["bool"]["boost"] = 2
+        should.append(clause)
+
+    preference_queries = {
+        "affordability": {"range": {"msrp": {"lte": 30000, "boost": 2}}},
+        "fuel_economy": {"range": {"combined_mpg": {"gte": 30, "boost": 3}}},
+        "city_driving": {"range": {"city_mpg": {"gte": 25, "boost": 2}}},
+        "highway_driving": {"range": {"highway_mpg": {"gte": 30, "boost": 2}}},
+        "performance": {"range": {"engine_hp": {"gte": 300, "boost": 3}}},
+        "newer": {"range": {"year": {"gte": 2015, "boost": 2}}},
+        "all_weather": _case_insensitive_any(
+            "driven_wheels", ["all wheel drive", "four wheel drive"]
+        ),
+        "family_space": _case_insensitive_any(
+            "vehicle_style", ["4dr SUV", "Wagon", "Passenger Minivan"]
+        ),
+        "cargo_space": _case_insensitive_any(
+            "vehicle_style", ["4dr SUV", "Wagon", "Cargo Van", "Passenger Minivan"]
+        ),
+        "compact": _case_insensitive_any("vehicle_size", ["Compact"]),
+        "luxury": _contains_any("market_category", ["Luxury"]),
+    }
+    for preference in f.ranking_preferences or []:
+        if preference.startswith("transmission:"):
+            value = preference.split(":", 1)[1]
+            clause = _case_insensitive_any("transmission_type", [value])
+            clause["bool"]["boost"] = 2
+            should.append(clause)
+            continue
+        if preference in preference_queries:
+            should.append(preference_queries[preference])
+    return should
 
 
 def _build_query(f) -> dict:
     must: list[dict] = []
     filt: list[dict] = []
+    must_not: list[dict] = []
 
     if f.q:
         must.append({"multi_match": {
@@ -42,7 +164,37 @@ def _build_query(f) -> dict:
         ("transmission_type", f.transmission_type),
     ):
         if value:
-            filt.append({"term": {field: value}})
+            filt.append(_case_insensitive_any(field, [value]))
+
+    for field, values in (
+        ("make", f.makes),
+        ("model", f.models),
+        ("transmission_type", f.transmission_types),
+        ("vehicle_style", f.vehicle_styles),
+        ("vehicle_size", f.vehicle_sizes),
+        ("driven_wheels", f.driven_wheels),
+    ):
+        if values:
+            filt.append(_case_insensitive_any(field, values))
+
+    if f.powertrains:
+        filt.append(_powertrain_any(f.powertrains))
+    if f.market_categories:
+        filt.append(_contains_any("market_category", f.market_categories))
+
+    for field, values in (
+        ("make", f.excluded_makes),
+        ("model", f.excluded_models),
+        ("transmission_type", f.excluded_transmission_types),
+        ("vehicle_style", f.excluded_vehicle_styles),
+        ("driven_wheels", f.excluded_driven_wheels),
+    ):
+        if values:
+            must_not.append(_case_insensitive_any(field, values))
+    if f.excluded_powertrains:
+        must_not.append(_powertrain_any(f.excluded_powertrains))
+    if f.excluded_market_categories:
+        must_not.append(_contains_any("market_category", f.excluded_market_categories))
 
     def _range(field, lo, hi):
         rng = {}
@@ -56,10 +208,21 @@ def _build_query(f) -> dict:
     _range("year", f.year_min, f.year_max)
     _range("msrp", f.price_min, f.price_max)
     _range("engine_hp", f.hp_min, f.hp_max)
+    _range("engine_cylinders", f.engine_cylinders_min, f.engine_cylinders_max)
+    _range("number_of_doors", f.number_of_doors_min, f.number_of_doors_max)
+    _range("city_mpg", f.city_mpg_min, f.city_mpg_max)
+    _range("highway_mpg", f.highway_mpg_min, f.highway_mpg_max)
+    _range("combined_mpg", f.combined_mpg_min, f.combined_mpg_max)
 
-    if not must and not filt:
+    should = _preference_clauses(f)
+    if not must and not filt and not must_not and not should:
         return {"match_all": {}}
-    return {"bool": {"must": must or {"match_all": {}}, "filter": filt}}
+    query = {"bool": {"must": must or {"match_all": {}}, "filter": filt}}
+    if must_not:
+        query["bool"]["must_not"] = must_not
+    if should:
+        query["bool"]["should"] = should
+    return query
 
 
 def _build_sort(f) -> list[dict]:
@@ -70,7 +233,9 @@ def _build_sort(f) -> list[dict]:
     Unknown sort keys still fall back to popularity; the trailing `_id`
     tie-breaker keeps pagination deterministic when the primary field ties.
     """
-    if f.q and (f.sort is None or f.sort == "popularity"):
+    if (f.q or f.ranking_preferences or _preference_clauses(f)) and (
+        f.sort is None or f.sort == "popularity"
+    ):
         return [{"_score": {"order": "desc"}}, {"id": "asc"}]
 
     sort_field = SORT_FIELDS.get(f.sort, "popularity")

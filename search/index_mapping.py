@@ -66,6 +66,7 @@ CARS_MAPPING = {
             "vehicle_style": {"type": "keyword"},
             "highway_mpg": {"type": "integer"},
             "city_mpg": {"type": "integer"},
+            "combined_mpg": {"type": "integer"},
             "popularity": {"type": "integer"},
             "msrp": {"type": "float"},
             # combined free-text field for the keyword search box
