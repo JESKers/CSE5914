@@ -7,6 +7,7 @@ loop (tool_use -> tool_result -> final text), error surfacing, and the
 /assistant/* endpoints. Run from the repo root:  pytest
 """
 import json
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -41,6 +42,8 @@ def isolate(tmp_path, monkeypatch):
     agent._SESSIONS.clear()
     agent._OLLAMA_SESSIONS.clear()
     agent._OLLAMA_SHOP_FILTERS.clear()
+    agent._OLLAMA_SHOP_PAGES.clear()
+    agent._OLLAMA_SHOP_COUNTS.clear()
 
 
 # --------------------------------------------------------------------------- #
@@ -280,6 +283,126 @@ def test_grounded_shop_reply_uses_search_results():
     assert "2016 BMW M4" in reply
     assert "$60,000" in reply
     assert "**I understood:**" in reply
+
+
+def test_grounded_shop_reply_shows_more_results_and_honors_count(monkeypatch):
+    cars = [
+        {**_SAMPLE_CAR, "id": str(index), "model": f"M4-{index}"}
+        for index in range(20)
+    ]
+    monkeypatch.setattr(
+        agent.search_service,
+        "search",
+        lambda filters: {
+            "total": 100,
+            "page": filters.page,
+            "size": filters.size,
+            "results": cars,
+        },
+    )
+
+    default_reply, _ = agent._grounded_shop_reply("Find a BMW coupe")
+    requested_reply, _ = agent._grounded_shop_reply("Show me 18 BMW cars")
+    more_reply, _ = agent._grounded_shop_reply("I want to see much more")
+
+    assert default_reply.count("| 2016 BMW M4-") == 12
+    assert "with **12** different models" in default_reply
+    assert requested_reply.count("| 2016 BMW M4-") == 18
+    assert more_reply.count("| 2016 BMW M4-") == 20
+
+
+def test_grounded_shop_results_are_diversified_by_model(monkeypatch):
+    cars = [
+        {**_SAMPLE_CAR, "id": "1", "model": "RAV4", "year": 2015},
+        {**_SAMPLE_CAR, "id": "2", "model": "RAV4", "year": 2016},
+        {**_SAMPLE_CAR, "id": "3", "model": "Highlander", "year": 2016},
+    ]
+    monkeypatch.setattr(
+        agent.search_service,
+        "search",
+        lambda filters: {
+            "total": 3, "page": 1, "size": filters.size, "results": cars,
+        },
+    )
+
+    reply, result = agent._grounded_shop_reply("Find Toyota SUVs")
+
+    assert reply.count("RAV4") == 1
+    assert "Highlander" in reply
+    assert result["diverse_total"] == 2
+
+
+def test_grounded_shop_next_and_previous_pages(monkeypatch):
+    cars = [
+        {**_SAMPLE_CAR, "id": str(index), "model": f"Model-{index}"}
+        for index in range(30)
+    ]
+    monkeypatch.setattr(
+        agent.search_service,
+        "search",
+        lambda filters: {
+            "total": 30, "page": 1, "size": filters.size, "results": cars,
+        },
+    )
+
+    _, first = agent._grounded_shop_reply(
+        "Find BMW cars",
+        session_id="pages",
+    )
+    next_reply, second = agent._grounded_shop_reply(
+        "Show the next page",
+        session_id="pages",
+    )
+    _, previous = agent._grounded_shop_reply(
+        "Go back",
+        session_id="pages",
+    )
+
+    assert first["display_page"] == 1
+    assert second["display_page"] == 2
+    assert second["displayed_results"][0]["model"] == "Model-12"
+    assert "page **2 of 3**" in next_reply
+    assert previous["display_page"] == 1
+
+
+def test_grounded_shop_can_remove_remembered_constraints(monkeypatch):
+    seen = []
+
+    def capture(filters):
+        seen.append(filters)
+        return {"total": 1, "page": 1, "size": filters.size, "results": [dict(_SAMPLE_CAR)]}
+
+    monkeypatch.setattr(agent.search_service, "search", capture)
+    agent._grounded_shop_reply(
+        "Find a BMW coupe under $70000",
+        session_id="remove-filters",
+    )
+    reply, result = agent._grounded_shop_reply(
+        "Any brand is fine and remove the budget",
+        session_id="remove-filters",
+    )
+
+    applied = agent._OLLAMA_SHOP_FILTERS["remove-filters"]
+    assert applied.make is None
+    assert applied.price_max is None
+    assert applied.vehicle_styles == ["Coupe"]
+    assert "removed budget, make" in reply
+    assert "price_max" not in result["query_echo"]
+
+
+def test_vehicle_age_request_reports_catalog_mismatch(monkeypatch):
+    monkeypatch.setattr(
+        agent.search_service,
+        "search",
+        lambda filters: {
+            "total": 0, "page": 1, "size": filters.size, "results": [],
+        },
+    )
+
+    reply, result = agent._grounded_shop_reply("Find an SUV at most 3 years old")
+
+    assert result["query_echo"]["year_min"] == date.today().year - 3
+    assert "catalog covers model years" in reply.casefold()
 
 
 def test_grounded_shop_followup_remembers_and_refines_filters(monkeypatch):

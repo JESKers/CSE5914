@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -326,6 +327,21 @@ def _extract_years(q: str) -> dict:
         token = match.group(1)
         count = int(token) if token.isdigit() else relative_years[token]
         result.update(year_min=maximum - count + 1, year_max=maximum)
+        return result
+
+    # Vehicle age is relative to today, unlike "last N model years", which is
+    # explicitly relative to the committed catalog's available model years.
+    if match := re.search(
+        r"\b(?:at most|up to|no more than|maximum(?: of)?)\s+"
+        r"([1-9]|10)\s+years?\s+old\b",
+        q,
+    ):
+        age = int(match.group(1))
+        result.update(year_min=date.today().year - age, year_max=date.today().year)
+        return result
+    if match := re.search(r"\b([1-9]|10)[- ]years?[- ]old\b", q):
+        model_year = date.today().year - int(match.group(1))
+        result.update(year_min=model_year, year_max=model_year)
         return result
 
     candidates = [

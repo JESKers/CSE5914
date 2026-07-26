@@ -36,6 +36,9 @@ MAX_AGENT_ITERATIONS = 12   # hard cap on model<->tool round trips per user turn
 MAX_RESULTS_TO_MODEL = 8    # keep tool payloads small so context stays lean
 MAX_RENTAL_UNITS = 10       # rental comparisons benefit from a few more options
 MAX_OLLAMA_HISTORY_MESSAGES = 24
+DEFAULT_SHOP_RESULTS_TO_SHOW = 12
+MAX_SHOP_RESULTS_TO_SHOW = 20
+MAX_SHOP_DIVERSITY_CANDIDATES = 200
 
 # Adaptive thinking is only accepted on Claude 4.6+ / Sonnet 5 / Fable models;
 # older ones (e.g. Haiku 4.5) reject the parameter with a 400, so gate it.
@@ -51,6 +54,8 @@ def _supports_adaptive_thinking(model: str) -> bool:
 _SESSIONS: dict[str, list[dict[str, Any]]] = {}
 _OLLAMA_SESSIONS: dict[str, list[dict[str, Any]]] = {}
 _OLLAMA_SHOP_FILTERS: dict[str, SearchFilters] = {}
+_OLLAMA_SHOP_PAGES: dict[str, int] = {}
+_OLLAMA_SHOP_COUNTS: dict[str, int] = {}
 
 
 # --------------------------------------------------------------------------- #
@@ -479,6 +484,8 @@ def reset_session(session_id: str) -> None:
     _SESSIONS.pop(session_id, None)
     _OLLAMA_SESSIONS.pop(session_id, None)
     _OLLAMA_SHOP_FILTERS.pop(session_id, None)
+    _OLLAMA_SHOP_PAGES.pop(session_id, None)
+    _OLLAMA_SHOP_COUNTS.pop(session_id, None)
 
 
 def _chat_anthropic(session_id: str, user_message: str) -> dict[str, Any]:
@@ -635,9 +642,110 @@ def _is_shop_followup(message: str) -> bool:
     """Recognize refinements that should inherit prior search constraints."""
     return bool(re.search(
         r"\b(?:cheaper|newer|older|faster|those|them|ones|instead|"
-        r"only|also|same|more|less|what about|how about)\b",
+        r"only|also|same|more|less|next|previous|back|remove|clear|"
+        r"forget|ignore|without|what about|how about)\b",
         message.casefold(),
     ))
+
+
+def _shop_page_delta(message: str) -> int:
+    normalized = message.casefold()
+    if re.search(
+        r"\b(?:previous|prior|back)(?:\s+(?:page|results?|options?|cars?))?\b",
+        normalized,
+    ):
+        return -1
+    if re.search(
+        r"\b(?:next\s+(?:page|results?|options?|cars?)|"
+        r"more\s+(?:results?|options?|cars?))\b",
+        normalized,
+    ):
+        return 1
+    return 0
+
+
+def _shop_filter_removals(message: str) -> tuple[set[str], list[str], bool]:
+    """Translate natural-language reset commands into fields to clear."""
+    normalized = message.casefold()
+    if re.search(
+        r"\b(?:start over|reset(?:\s+all)?(?:\s+filters?)?|"
+        r"clear all|forget everything|new search)\b",
+        normalized,
+    ):
+        return set(), ["all filters"], True
+
+    groups = (
+        (
+            r"\b(?:remove|clear|forget|ignore|drop|no)\b.{0,25}"
+            r"\b(?:price|budget|cost|price limit)\b|"
+            r"\b(?:any price|no budget|without a budget)\b",
+            {"price_min", "price_max", "preferred_price_max"},
+            "budget",
+        ),
+        (
+            r"\b(?:remove|clear|forget|ignore|drop)\b.{0,25}"
+            r"\b(?:make|brand)\b|\b(?:any make|any brand|brand does not matter)\b",
+            {"make", "makes", "preferred_makes", "excluded_makes"},
+            "make",
+        ),
+        (
+            r"\b(?:remove|clear|forget|ignore|drop)\b.{0,25}\bmodel\b|"
+            r"\bany model\b",
+            {"model", "models", "excluded_models"},
+            "model",
+        ),
+        (
+            r"\b(?:remove|clear|forget|ignore|drop)\b.{0,25}"
+            r"\b(?:year|age|newer|older)\b|\b(?:any year|any age)\b",
+            {"year_min", "year_max", "preferred_year_min"},
+            "year",
+        ),
+        (
+            r"\b(?:remove|clear|forget|ignore|drop)\b.{0,25}"
+            r"\b(?:style|body|suv|sedan|coupe|truck|wagon|hatchback|minivan)\b|"
+            r"\b(?:any style|any body style)\b",
+            {
+                "vehicle_styles", "preferred_vehicle_styles",
+                "excluded_vehicle_styles",
+            },
+            "body style",
+        ),
+        (
+            r"\b(?:remove|clear|forget|ignore|drop)\b.{0,25}"
+            r"\b(?:fuel|powertrain|hybrid|electric|diesel|gasoline)\b|"
+            r"\b(?:any fuel|any powertrain)\b",
+            {
+                "engine_fuel_type", "powertrains", "preferred_powertrains",
+                "excluded_powertrains",
+            },
+            "powertrain",
+        ),
+        (
+            r"\b(?:remove|clear|forget|ignore|drop)\b.{0,25}"
+            r"\b(?:transmission|automatic|manual)\b|\bany transmission\b",
+            {
+                "transmission_type", "transmission_types",
+                "excluded_transmission_types",
+            },
+            "transmission",
+        ),
+        (
+            r"\b(?:remove|clear|forget|ignore|drop)\b.{0,25}"
+            r"\b(?:drivetrain|awd|4wd|fwd|rwd)\b|\bany drivetrain\b",
+            {
+                "driven_wheels", "preferred_driven_wheels",
+                "excluded_driven_wheels",
+            },
+            "drivetrain",
+        ),
+    )
+    fields: set[str] = set()
+    labels: list[str] = []
+    for pattern, group_fields, label in groups:
+        if re.search(pattern, normalized):
+            fields.update(group_fields)
+            labels.append(label)
+    return fields, labels, False
 
 
 def _merge_shop_filters(
@@ -645,7 +753,11 @@ def _merge_shop_filters(
     current: SearchFilters,
     *,
     followup: bool,
+    remove_fields: set[str] | None = None,
+    reset_all: bool = False,
 ) -> SearchFilters:
+    if reset_all:
+        return SearchFilters()
     if previous is None or not followup:
         return current
 
@@ -675,6 +787,17 @@ def _merge_shop_filters(
             continue
         if key in current_data:
             merged[key] = current_data[key]
+    for key in remove_fields or set():
+        merged.pop(key, None)
+    if {"price_min", "price_max", "preferred_price_max"} & (remove_fields or set()):
+        remaining = [
+            item for item in merged.get("ranking_preferences", [])
+            if item != "affordability"
+        ]
+        if remaining:
+            merged["ranking_preferences"] = remaining
+        else:
+            merged.pop("ranking_preferences", None)
     merged["page"] = 1
     return SearchFilters(**merged)
 
@@ -728,38 +851,174 @@ def _filter_interpretation(filters: SearchFilters) -> str:
     return "; ".join(details) or "a broad catalog search"
 
 
+def _requested_shop_result_count(message: str, previous: int | None = None) -> int:
+    """Choose a readable result count while honoring explicit user requests."""
+    normalized = message.casefold()
+    patterns = (
+        r"\b(?:show|list|give|display|see)(?:\s+me)?\s+(?:the\s+top\s+)?(\d{1,2})\b",
+        r"\b(?:top\s+)?(\d{1,2})\s+(?:cars?|vehicles?|options?|results?)\b",
+    )
+    for pattern in patterns:
+        if match := re.search(pattern, normalized):
+            return max(1, min(int(match.group(1)), MAX_SHOP_RESULTS_TO_SHOW))
+    if (
+        not _shop_page_delta(message)
+        and re.search(r"\b(?:show|see|list|give|want).*\b(?:more|all)\b", normalized)
+    ):
+        return MAX_SHOP_RESULTS_TO_SHOW
+    return previous or DEFAULT_SHOP_RESULTS_TO_SHOW
+
+
+def _diversify_cars(cars: list[dict[str, Any]], *, include_all_trims: bool) -> list[dict[str, Any]]:
+    """Keep the best-ranked representative of each model unless trims are requested."""
+    if include_all_trims:
+        return cars
+    diversified = []
+    seen = set()
+    for car in cars:
+        key = (
+            str(car.get("make") or "").casefold(),
+            str(car.get("model") or "").casefold(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        diversified.append(car)
+    return diversified
+
+
+def _car_match_reasons(car: dict[str, Any], filters: SearchFilters) -> list[str]:
+    """Build short explanations using only facts present in the search hit."""
+    reasons: list[str] = []
+    price = car.get("msrp")
+    combined = car.get("combined_mpg")
+    if combined is None and car.get("city_mpg") is not None and car.get("highway_mpg") is not None:
+        combined = round((car["city_mpg"] + car["highway_mpg"]) / 2)
+
+    preferences = set(filters.ranking_preferences or [])
+    if filters.sort == "price" and price is not None:
+        reasons.append(f"low price ${float(price):,.0f}")
+    elif filters.price_max is not None and price is not None:
+        room = filters.price_max - float(price)
+        if room >= 0:
+            reasons.append(f"${room:,.0f} under budget")
+    if (
+        filters.sort == "combined_mpg"
+        or "fuel_economy" in preferences
+        or filters.preferred_combined_mpg_min is not None
+    ) and combined is not None:
+        reasons.append(f"{combined} combined MPG")
+    if (
+        filters.sort == "hp"
+        or "performance" in preferences
+        or filters.hp_min is not None
+    ) and car.get("engine_hp") is not None:
+        reasons.append(f"{car['engine_hp']} hp")
+    if filters.sort == "year" or "newer" in preferences:
+        reasons.append(f"{car.get('year')} model")
+    if "all_weather" in preferences and car.get("driven_wheels"):
+        reasons.append(str(car["driven_wheels"]))
+    if "family_space" in preferences and car.get("vehicle_style"):
+        reasons.append(str(car["vehicle_style"]))
+    return reasons[:2] or ["matches requested filters"]
+
+
+def _catalog_context_note(
+    user_message: str,
+    filters: SearchFilters,
+    minimum_year: int,
+    maximum_year: int,
+) -> str:
+    normalized = user_message.casefold()
+    relative = re.search(
+        r"\b(?:last|past)\s+\w+\s+(?:model\s+)?years?\b|"
+        r"\b\d+\s+years?\s+old\b|\bnewest\b|\blatest\b",
+        normalized,
+    )
+    if filters.year_min is not None and filters.year_min > maximum_year:
+        return (
+            f"The catalog covers model years {minimum_year}-{maximum_year}, "
+            f"but this request requires {filters.year_min} or newer."
+        )
+    if relative:
+        return (
+            f"Relative year language is evaluated against the catalog's "
+            f"{minimum_year}-{maximum_year} coverage."
+        )
+    return ""
+
+
 def _grounded_shop_reply(
     user_message: str,
     session_id: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Answer direct shopping searches from parsed Elasticsearch evidence."""
-    from rag.parser import parse_query
+    from rag.parser import _catalog_year_bounds, parse_query
 
     current = parse_query(user_message)
     previous = _OLLAMA_SHOP_FILTERS.get(session_id) if session_id else None
+    remove_fields, removed_labels, reset_all = _shop_filter_removals(user_message)
+    page_delta = _shop_page_delta(user_message)
+    followup = _is_shop_followup(user_message) or bool(
+        previous and (remove_fields or reset_all or page_delta)
+    )
     filters = _merge_shop_filters(
         previous,
         current,
-        followup=_is_shop_followup(user_message),
+        followup=followup,
+        remove_fields=remove_fields,
+        reset_all=reset_all,
     )
+
+    previous_count = _OLLAMA_SHOP_COUNTS.get(session_id) if session_id else None
+    requested_count = _requested_shop_result_count(user_message, previous_count)
+    previous_page = _OLLAMA_SHOP_PAGES.get(session_id, 1) if session_id else 1
+    page = max(1, previous_page + page_delta) if page_delta else 1
     if session_id:
         _OLLAMA_SHOP_FILTERS[session_id] = filters
-    result = search_service.search(filters)
+        _OLLAMA_SHOP_COUNTS[session_id] = requested_count
+
+    candidate_filters = filters.model_copy(update={
+        "page": 1,
+        "size": MAX_SHOP_DIVERSITY_CANDIDATES,
+    })
+    result = search_service.search(candidate_filters)
     result["query_echo"] = filters.model_dump(exclude_none=True)
     understood = _filter_interpretation(filters)
-    cars = result["results"][:4]
-    if not cars:
+    all_trims = bool(re.search(r"\b(?:all|every)\s+trims?\b", user_message.casefold()))
+    candidates = _diversify_cars(result["results"], include_all_trims=all_trims)
+    total_pages = max(1, (len(candidates) + requested_count - 1) // requested_count)
+    page = min(page, total_pages)
+    if session_id:
+        _OLLAMA_SHOP_PAGES[session_id] = page
+    offset = (page - 1) * requested_count
+    cars = candidates[offset:offset + requested_count]
+    result.update(
+        displayed_results=cars,
+        display_page=page,
+        display_size=requested_count,
+        diverse_total=len(candidates),
+    )
+    minimum_year, maximum_year = _catalog_year_bounds()
+    catalog_note = _catalog_context_note(
+        user_message,
+        filters,
+        minimum_year,
+        maximum_year,
+    )
+    if not result["results"]:
+        detail = f"\n\nCatalog note: {catalog_note}" if catalog_note else ""
         return (
             f"**I understood:** {understood}.\n\n"
             "I couldn't find an exact catalog match for those requirements. "
             "Try increasing the budget, widening the year range, or changing "
-            "the body style.",
+            f"the body style.{detail}",
             result,
         )
 
     lines = [
-        "| Vehicle | MSRP | MPG (city/highway) | Transmission |",
-        "| --- | ---: | ---: | --- |",
+        "| Vehicle | MSRP | MPG (city/highway) | Transmission | Why it matches |",
+        "| --- | ---: | ---: | --- | --- |",
     ]
     for car in cars:
         price = car.get("msrp")
@@ -768,20 +1027,30 @@ def _grounded_shop_reply(
         highway = car.get("highway_mpg")
         mpg_text = f"{city or 'N/A'} / {highway or 'N/A'}"
         vehicle = f"{car.get('year')} {car.get('make')} {car.get('model')}"
+        reasons = "; ".join(_car_match_reasons(car, filters)).replace("|", "/")
         lines.append(
             f"| {vehicle} | {price_text} | {mpg_text} | "
-            f"{car.get('transmission_type') or 'N/A'} |"
+            f"{car.get('transmission_type') or 'N/A'} | {reasons} |"
         )
+    update = (
+        f"**Updated:** removed {', '.join(removed_labels)}.\n\n"
+        if removed_labels else ""
+    )
+    result_kind = "options" if all_trims else "different models"
     intro = (
-        f"**I understood:** {understood}.\n\n"
-        f"I found **{result['total']}** matching vehicles. Here are the top options:"
+        f"{update}**I understood:** {understood}.\n\n"
+        f"I found **{result['total']}** matching vehicles. "
+        f"Showing page **{page} of {total_pages}** with **{len(cars)}** "
+        f"{result_kind}:"
     )
     warnings = filters.unsupported_preferences or []
-    warning = (
-        "\n\nCatalog note: I cannot verify " + ", ".join(warnings) + "."
-        if warnings else ""
-    )
-    return "\n".join([intro, "", *lines]) + warning, result
+    notes = []
+    if warnings:
+        notes.append("I cannot verify " + ", ".join(warnings) + ".")
+    if catalog_note:
+        notes.append(catalog_note)
+    note_text = "\n\nCatalog note: " + " ".join(notes) if notes else ""
+    return "\n".join([intro, "", *lines]) + note_text, result
 
 
 def _trim_ollama_history(history: list[dict[str, Any]]) -> None:
