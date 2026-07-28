@@ -4,6 +4,5 @@
 from recommend import recommend
 
 if __name__ == "__main__":
-    # The example query is intentionally basic so it is easy to swap out.
-    query = "What is the difference between the skittles flavors?"
+    query = "Find a fuel-efficient SUV under $40,000"
     print(recommend(query, rebuild=False))

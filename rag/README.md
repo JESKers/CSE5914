@@ -12,7 +12,7 @@ cd rag
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ollama serve
-ollama pull llama3.2
+ollama pull qwen3.5:4b
 ollama pull nomic-embed-text
 ```
 
@@ -26,7 +26,8 @@ python hello_llm.py
 python main.py
 ```
 
-This demo will now use Elasticsearch to retrieve matching car documents and Ollama `llama3.2` for answer generation.
+This demo uses Elasticsearch to retrieve matching car documents and Ollama
+`qwen3.5:4b` for answer generation.
 
 ## 3. Build the vector store
 Needs `backend/data/cars_clean.json` (Kangjie's cleaned NDJSON) — run

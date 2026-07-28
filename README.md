@@ -33,13 +33,12 @@ from the **repo root** (`uvicorn backend.app.main:app`, `python -m search.ingest
 
 ## Quick start
 
-Prereqs: Docker (Desktop or colima), Node 18+, a Kaggle account (dataset download),
-Ollama with `llama3.2` and `nomic-embed-text`, and an Anthropic API key per person
-for the AI Assistant (console.anthropic.com — the account needs API credit;
-Claude app subscriptions don't cover API calls).
+Prereqs: Docker Desktop (or Colima), Node 18+, and the committed catalog data.
+The compose stack downloads `qwen3.5:4b` and `nomic-embed-text` into Ollama.
+An Anthropic API key is optional; without one, the assistant uses local Ollama.
 
 ```bash
-# 1. Env — fill in your own ANTHROPIC_API_KEY (required for /assistant + /recommend)
+# 1. Env — optionally add an ANTHROPIC_API_KEY; local Ollama works without one
 cp .env.example .env
 
 # 2. Elasticsearch + Kibana + backend (build bakes the source into the image)
@@ -81,14 +80,14 @@ verification and generation status.
   `docker compose up -d --build backend`. Changing only `.env` needs just
   `docker compose up -d backend` (recreate, no rebuild).
 - **Empty search results** → step 3 wasn't run (the ES index is empty).
-- **/assistant returns 503** → `ANTHROPIC_API_KEY` missing in `.env`;
-  **400 "credit balance is too low"** → the key's account has no API credit.
+- **Assistant answers slowly on its first request** → Ollama is loading the
+  local model into memory; later requests reuse the loaded model.
 - **ES container unhealthy / exits** → give Docker ≥ 4 GB memory.
 - Runtime artifacts (`data/store.db` order ledger, `data/vehicle_images.json`
   photo cache) create themselves on first use — never commit them or `.env`.
 
 The compose stack starts Ollama at http://localhost:11434. On a host-managed
-Ollama installation, pull the required models with `ollama pull llama3.2` and
+Ollama installation, pull the required models with `ollama pull qwen3.5:4b` and
 `ollama pull nomic-embed-text` before using `POST /api/recommend`.
 
 The default stack is CPU-compatible. Machines with an NVIDIA Container Toolkit

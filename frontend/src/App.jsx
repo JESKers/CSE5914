@@ -1,29 +1,63 @@
-import { NavLink, Route, Routes } from "react-router-dom";
-import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
 import SearchPage from "@/pages/SearchPage";
 import RecommendPage from "@/pages/RecommendPage";
 import StorePage from "@/pages/StorePage";
 import AssistantPage from "@/pages/AssistantPage";
 
-function Nav() {
+const PAGES = {
+  "/": SearchPage,
+  "/recommend": RecommendPage,
+  "/store": StorePage,
+  "/assistant": AssistantPage,
+};
+
+function AppLink({ to, currentPath, className = "", children, ...props }) {
+  const active = currentPath === to;
+  return (
+    <a
+      href={to}
+      className={`${className} ${active ? "is-active" : ""}`.trim()}
+      onClick={(event) => {
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+        event.preventDefault();
+        window.history.pushState({}, "", to);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}
+
+function Nav({ currentPath }) {
   return (
     <header className="nav">
       <div className="shell nav__inner">
-        <NavLink to="/" className="nav__brand" aria-label="JESKers home">
+        <AppLink to="/" currentPath={currentPath} className="nav__brand" aria-label="JESKers home">
           <span className="nav__mark" aria-hidden="true">
             <span className="nav__needle" />
           </span>
           <span className="nav__name">
             JESKers<span className="nav__dot">.</span>
           </span>
-        </NavLink>
+        </AppLink>
         <nav className="nav__links">
-          <NavLink to="/" end className={({ isActive }) => cn(isActive && "is-active")}>
+          <AppLink to="/" currentPath={currentPath}>
             Search
-          </NavLink>
-          <NavLink to="/assistant" className={({ isActive }) => cn(isActive && "is-active")}>
+          </AppLink>
+          <AppLink to="/assistant" currentPath={currentPath}>
             Assistant
-          </NavLink>
+          </AppLink>
         </nav>
         <span className="nav__badge mono">Smart Car Search</span>
       </div>
@@ -43,16 +77,20 @@ function Footer() {
 }
 
 export default function App() {
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const syncPath = () => setCurrentPath(window.location.pathname);
+    window.addEventListener("popstate", syncPath);
+    return () => window.removeEventListener("popstate", syncPath);
+  }, []);
+
+  const Page = PAGES[currentPath] ?? SearchPage;
   return (
     <>
-      <Nav />
+      <Nav currentPath={currentPath} />
       <main>
-        <Routes>
-          <Route path="/" element={<SearchPage />} />
-          <Route path="/recommend" element={<RecommendPage />} />
-          <Route path="/store" element={<StorePage />} />
-          <Route path="/assistant" element={<AssistantPage />} />
-        </Routes>
+        <Page />
       </main>
       <Footer />
     </>

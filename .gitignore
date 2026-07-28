@@ -1,38 +1,28 @@
 # Python
 __pycache__/
-*.pyc
-.venv/
-venv/
-
-# Environment
-.env
-
-# Local vector DB / generated files
-milvus_demo.db
-*.db
-*.sqlite
-*.sqlite3
-
-# OS/editor
-.DS_Store
-.vscode/
-.idea/
-
-# Docker
-/volumes
 *.py[cod]
 .venv/
 venv/
 .pytest_cache/
-evaluation/results/
 
-# Env / secrets
+# Environment and local tooling
 .env
+.claude/
+.vscode/
+.idea/
+.DS_Store
+
+# Generated databases, reports, and Docker state
+*.db
+*.sqlite
+*.sqlite3
+milvus_demo.db
+evaluation/results/
+/volumes/
 
 # Data — commit the catalog inputs/outputs and synthetic reference tables, but
 # keep runtime artifacts and any unlisted local data out of Git.
 /data/*
-!/data/.gitkeep
 !/data/README.md
 !/data/data.csv
 !/data/cars_clean.json
