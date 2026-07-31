@@ -3,6 +3,8 @@
 Smart car search & recommendation over the
 [Kaggle car dataset](https://www.kaggle.com/datasets/CooperUnion/cardataset).
 
+- **Timebox 1** — Elasticsearch-backed **Car Search System** (filter by brand, model,
+  year, price, horsepower, engine, transmission). ← completed
 - **Timebox 2** — Elasticsearch-backed **Car Search System** (filter by brand, model,
   year, price, horsepower, engine, transmission + keywords). ← current
 - **Timebox 3** — **Smart Recommendation** via RAG/LLM over free-text queries.
