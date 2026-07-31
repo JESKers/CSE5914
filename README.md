@@ -8,6 +8,7 @@ Smart car search & recommendation over the
 - **Timebox 2** — Elasticsearch-backed **Car Search System** (filter by brand, model,
   year, price, horsepower, engine, transmission + keywords). ← current
 - **Timebox 3** — **Smart Recommendation** via RAG/LLM over free-text queries.
+- **Final** — Integration between front end, backend, search and RAGLLM.
 
 Plan: [docs/TIMEBOX2_PLAN.md](docs/TIMEBOX2_PLAN.md) · API: [docs/API_CONTRACT.md](docs/API_CONTRACT.md)
 
